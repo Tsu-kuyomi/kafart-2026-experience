@@ -1,712 +1,193 @@
-import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { HALL_ZONES, ENTRY_GATES, TEST_SCHEDULE, LOOP_TOTAL_SECONDS } from "./schedule.js";
-
-const urlParams = new URLSearchParams(window.location.search);
-let currentGateKey = ENTRY_GATES[urlParams.get("gate")] ? urlParams.get("gate") : "gate_main";
-let viewMode = "2d";
-let isDarkMode = localStorage.getItem("kafart6_theme") === "dark";
-let simElapsedSec = 0;
-let isPaused = false;
-let selectedZoneId = null;
-let selectedEventId = null;
-let stampedZones = JSON.parse(localStorage.getItem("kafart6_stamps") || "[]");
-
-// =========================================================
-// 1. 2D PAN & ZOOM CONTROLLER (TOUCH + WHEEL)
-// =========================================================
-const mapViewport2d = document.getElementById("map-2d-viewport");
-const panZoomLayer = document.getElementById("map-pan-zoom-layer");
-
-let mapTransform = { x: 0, y: 0, scale: 1 };
-let activePointers = new Map();
-let lastPanMid = null;
-let lastPinchDist = null;
-let didDragMap = false;
-
-function applyMapTransform() {
-  panZoomLayer.setAttribute(
-    "transform",
-    `translate(${mapTransform.x.toFixed(2)}, ${mapTransform.y.toFixed(2)}) scale(${mapTransform.scale.toFixed(3)})`
-  );
-}
-
-function resetMapTransform() {
-  mapTransform = { x: 0, y: 0, scale: 1 };
-  applyMapTransform();
-}
-
-mapViewport2d.addEventListener("pointerdown", e => {
-  mapViewport2d.setPointerCapture(e.pointerId);
-  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  didDragMap = false;
-
-  if (activePointers.size === 1) {
-    lastPanMid = { x: e.clientX, y: e.clientY };
-  } else if (activePointers.size === 2) {
-    const pts = Array.from(activePointers.values());
-    lastPinchDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-    lastPanMid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+export const HALL_ZONES = {
+  main_stage: {
+    id: "main_stage",
+    name: "Main Stage",
+    wing: "North Auditorium & Runway",
+    category: "RUNWAY & KEYNOTES",
+    description: "Central auditorium seating facing the KAFART runway stage, flanked by Control and Backstage rooms.",
+    pos: { x: 0, z: -22 },
+    svgPos: { x: 0, y: -22 },
+    size: { w: 28, d: 24 },
+    color: 0xf3842b,
+    passport: true
+  },
+  exhibition_3: {
+    id: "exhibition_3",
+    name: "Exhibition 3",
+    wing: "Central Rotunda",
+    category: "CENTERPIECE INSTALLATION",
+    description: "Open heart of the hall featuring the circular monumental sculpture pedestal and surrounding plinths.",
+    pos: { x: 0, z: 3 },
+    svgPos: { x: 0, y: 4 },
+    size: { w: 30, d: 14 },
+    color: 0xd8ee52,
+    passport: true
+  },
+  fashion_exhibition: {
+    id: "fashion_exhibition",
+    name: "Fashion Wing",
+    wing: "North-West Gallery",
+    category: "CURATED GARMENTS",
+    description: "Enclosed gallery adjacent to the VIP Entrance showcasing archival Northern silhouettes and slow fashion.",
+    pos: { x: -20, z: -15 },
+    svgPos: { x: -21.7, y: -17 },
+    size: { w: 12, d: 15 },
+    color: 0xf3b2d0,
+    passport: true
+  },
+  exhibition_1: {
+    id: "exhibition_1",
+    name: "Exhibition 1",
+    wing: "South-West Corridor",
+    category: "VISUAL ART & TEXTILES",
+    description: "Curved gallery corridor displaying handwoven looms, documentary photography, and mixed-media works.",
+    pos: { x: -16, z: 18 },
+    svgPos: { x: -18, y: 18 },
+    size: { w: 18, d: 16 },
+    color: 0x113c2b,
+    passport: true
+  },
+  exhibition_2: {
+    id: "exhibition_2",
+    name: "Exhibition 2",
+    wing: "North-East Chambers",
+    category: "SCULPTURE & CERAMICS",
+    description: "Twin partitioned gallery rooms housing terracotta forms and pedestal art objects.",
+    pos: { x: 19, z: -7 },
+    svgPos: { x: 20.5, y: -9.5 },
+    size: { w: 13, d: 13 },
+    color: 0x489fb5,
+    passport: false
+  },
+  exhibition_4: {
+    id: "exhibition_4",
+    name: "Exhibition 4",
+    wing: "South-East Corridor",
+    category: "CONTEMPORARY CRAFT",
+    description: "Curved gallery corridor celebrating indigo pit-dyeing, leatherwork, and regional master artisans.",
+    pos: { x: 16, z: 18 },
+    svgPos: { x: 18, y: 18 },
+    size: { w: 18, d: 16 },
+    color: 0x2a7b5c,
+    passport: false
+  },
+  exhibition_5: {
+    id: "exhibition_5",
+    name: "Exhibition 5",
+    wing: "Far East Archive Room",
+    category: "SPECIAL ARCHIVE",
+    description: "Intimate gallery chamber dedicated to the 'To Have and to Hold' memory preservation showcase.",
+    pos: { x: 30, z: -7 },
+    svgPos: { x: 32.5, y: -9.5 },
+    size: { w: 10, d: 13 },
+    color: 0xe09f3e,
+    passport: false
+  },
+  photo_zone: {
+    id: "photo_zone",
+    name: "Photo Zone",
+    wing: "West Main Foyer",
+    category: "PORTRAITS & PRESS",
+    description: "Positioned immediately inside the West Main Entrance for press, designer, and visitor portraits.",
+    pos: { x: -34, z: -12 },
+    svgPos: { x: -36.4, y: -9.5 },
+    size: { w: 6, d: 16 },
+    color: 0xf3842b,
+    passport: false
+  },
+  makeup_tents: {
+    id: "makeup_tents",
+    name: "Makeup Tents",
+    wing: "North-East Exterior",
+    category: "BACKSTAGE PREP",
+    description: "Outdoor North-East prep pavilions with changing rooms connected directly to the Backstage Entrance.",
+    pos: { x: 38, z: -34 },
+    svgPos: { x: 35, y: -39 },
+    size: { w: 12, d: 10 },
+    color: 0x7a7974,
+    passport: false
   }
-});
+};
 
-mapViewport2d.addEventListener("pointermove", e => {
-  if (!activePointers.has(e.pointerId)) return;
-  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+export const ENTRY_GATES = {
+  gate_main: { short: "Main", name: "Main Entrance (West)", pos: { x: -42, z: 0 }, svgPos: { x: -42, y: 0 } },
+  gate_vip: { short: "VIP", name: "VIP Entrance (North-West)", pos: { x: -32, z: -32 }, svgPos: { x: -30, y: -30 } },
+  gate_south: { short: "South", name: "South Entrance", pos: { x: 0, z: 42 }, svgPos: { x: 0, y: 39 } },
+  gate_ne: { short: "NE", name: "North-East Entrance", pos: { x: 32, z: -30 }, svgPos: { x: 30, y: -30 } }
+};
 
-  const svgRect = document.getElementById("hall-svg").getBoundingClientRect();
-  const unitRatio = 108 / Math.max(svgRect.width, 1);
-
-  if (activePointers.size === 1 && lastPanMid) {
-    const dx = e.clientX - lastPanMid.x;
-    const dy = e.clientY - lastPanMid.y;
-    if (Math.hypot(dx, dy) > 4) didDragMap = true;
-    mapTransform.x += dx * unitRatio;
-    mapTransform.y += dy * unitRatio;
-    lastPanMid = { x: e.clientX, y: e.clientY };
-    applyMapTransform();
-  } else if (activePointers.size === 2) {
-    didDragMap = true;
-    const pts = Array.from(activePointers.values());
-    const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-    const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
-
-    if (lastPinchDist) {
-      const zoomFactor = dist / lastPinchDist;
-      mapTransform.scale = Math.min(3.2, Math.max(0.75, mapTransform.scale * zoomFactor));
-    }
-    if (lastPanMid) {
-      mapTransform.x += (mid.x - lastPanMid.x) * unitRatio;
-      mapTransform.y += (mid.y - lastPanMid.y) * unitRatio;
-    }
-    lastPinchDist = dist;
-    lastPanMid = mid;
-    applyMapTransform();
+// 15-Minute Rapid Stress-Test Loop with Full Curatorial Briefing Details
+export const TEST_SCHEDULE = [
+  {
+    id: "ev_1",
+    startSec: 0,
+    durationSec: 120,
+    title: "Doors Open & Arrivals",
+    zoneId: "photo_zone",
+    host: "KAFART Media & Press Crew",
+    highlights: "Editorial Portraits & Welcome",
+    overview: "Guests, exhibiting artists, and designers arrive through the West Main Foyer for editorial portraits at the official KAFART 6 backdrop before entering the central rotunda."
+  },
+  {
+    id: "ev_2",
+    startSec: 120,
+    durationSec: 180,
+    title: "Curator Walkthrough",
+    zoneId: "exhibition_3",
+    host: "Ganiyat Sani (NYH Concepts)",
+    highlights: "Monumental Sculpture & Memory",
+    overview: "An intimate guided tour starting at the central circular pedestal in Exhibition 3, unpacking the KAFART 6 Biennale theme 'To Have and to Hold' and what endures against cultural erasure."
+  },
+  {
+    id: "ev_3",
+    startSec: 180,
+    durationSec: 120,
+    title: "Spoken Word & Acoustic Set",
+    zoneId: "exhibition_1",
+    host: "Kaduna Poetry Collective",
+    highlights: "Hausa & English Live Verse",
+    overview: "Live acoustic strings and spoken-word performances echoing through the curved South-West textile gallery surrounded by handwoven Northern looms."
+  },
+  {
+    id: "ev_4",
+    startSec: 300,
+    durationSec: 300,
+    title: "Heritage Runway Showcase",
+    zoneId: "main_stage",
+    host: "Headline Northern Designers",
+    highlights: "12 Avant-Garde Collections",
+    overview: "The flagship KAFART 6 runway presentation on the North Main Stage, blending indigenous Sahelian weaving, indigo dyeing, and architectural contemporary silhouettes."
+  },
+  {
+    id: "ev_5",
+    startSec: 420,
+    durationSec: 180,
+    title: "Designer Lineup & Fitting",
+    zoneId: "makeup_tents",
+    host: "Backstage & Styling Directors",
+    highlights: "Second-Act Runway Prep",
+    overview: "Final hair, editorial makeup, and garment styling inside the exterior North-East pavilions ahead of the evening couture finale."
+  },
+  {
+    id: "ev_6",
+    startSec: 600,
+    durationSec: 180,
+    title: "Sahelian Looms Panel",
+    zoneId: "fashion_exhibition",
+    host: "Master Weavers & Curators",
+    highlights: "Slow Fashion & Preservation",
+    overview: "A seated conversation inside the North-West Fashion Wing examining how Northern Nigerian textile guilds sustain slow, intentional craftsmanship across generations."
+  },
+  {
+    id: "ev_7",
+    startSec: 780,
+    durationSec: 120,
+    title: "Indigo & Terracotta Demo",
+    zoneId: "exhibition_4",
+    host: "Kaduna Artisan Guild",
+    highlights: "Live Craft Technique",
+    overview: "Hands-on demonstration of natural indigo resist dyeing and sculptural clay finishing in the South-East contemporary craft corridor."
   }
-});
+];
 
-function clearPointer(e) {
-  activePointers.delete(e.pointerId);
-  if (activePointers.size === 1) {
-    const remaining = Array.from(activePointers.values())[0];
-    lastPanMid = { x: remaining.x, y: remaining.y };
-    lastPinchDist = null;
-  } else if (activePointers.size === 0) {
-    lastPanMid = null;
-    lastPinchDist = null;
-  }
-}
-
-mapViewport2d.addEventListener("pointerup", clearPointer);
-mapViewport2d.addEventListener("pointercancel", clearPointer);
-
-mapViewport2d.addEventListener("wheel", e => {
-  e.preventDefault();
-  const factor = e.deltaY < 0 ? 1.12 : 0.9;
-  mapTransform.scale = Math.min(3.2, Math.max(0.75, mapTransform.scale * factor));
-  applyMapTransform();
-}, { passive: false });
-
-// =========================================================
-// 2. SLOW WALKING FOOTSTEPS (3X SLOWER CADENCE)
-// =========================================================
-const svgNS = "http://www.w3.org/2000/svg";
-const footstepsLayer = document.getElementById("footsteps-layer");
-const originPinSvg = document.getElementById("svg-origin-pin");
-const targetRingSvg = document.getElementById("svg-target-ring");
-
-function buildCorridorWaypoints(startSvg, endSvg) {
-  const pts = [startSvg];
-  if (Math.hypot(startSvg.x - endSvg.x, startSvg.y - endSvg.y) > 22) {
-    const entryHub = {
-      x: Math.sign(startSvg.x) * Math.min(Math.abs(startSvg.x), 26),
-      y: Math.sign(startSvg.y) * Math.min(Math.abs(startSvg.y), 26)
-    };
-    pts.push(entryHub);
-    pts.push({ x: 0, y: 8 });
-  }
-  pts.push(endSvg);
-  return pts;
-}
-
-function drawWalkingFootsteps(targetZoneId) {
-  const gate = ENTRY_GATES[currentGateKey];
-  document.getElementById("gate-label").textContent = gate.short;
-
-  const circles = originPinSvg.querySelectorAll("circle");
-  circles.forEach(c => {
-    c.setAttribute("cx", gate.svgPos.x);
-    c.setAttribute("cy", gate.svgPos.y);
-  });
-
-  footstepsLayer.innerHTML = "";
-  if (!targetZoneId || !HALL_ZONES[targetZoneId]) {
-    targetRingSvg.setAttribute("visibility", "hidden");
-    return;
-  }
-
-  const dest = HALL_ZONES[targetZoneId].svgPos;
-  targetRingSvg.setAttribute("visibility", "visible");
-  document.getElementById("target-pulse-outer").setAttribute("cx", dest.x);
-  document.getElementById("target-pulse-outer").setAttribute("cy", dest.y);
-  document.getElementById("target-pulse-inner").setAttribute("cx", dest.x);
-  document.getElementById("target-pulse-inner").setAttribute("cy", dest.y);
-
-  const waypoints = buildCorridorWaypoints(gate.svgPos, dest);
-  const footColor = isDarkMode ? "#D8EE52" : "#113C2B";
-  let stepIndex = 0;
-
-  for (let i = 0; i < waypoints.length - 1; i++) {
-    const a = waypoints[i];
-    const b = waypoints[i + 1];
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const segLen = Math.hypot(dx, dy);
-    const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
-    const stepSpacing = 3.4;
-    const stepsCount = Math.max(1, Math.floor(segLen / stepSpacing));
-
-    const nx = -dy / (segLen || 1);
-    const ny = dx / (segLen || 1);
-
-    for (let s = 1; s <= stepsCount; s++) {
-      const t = s / (stepsCount + 0.5);
-      const isLeft = stepIndex % 2 === 0;
-      const sideOffset = isLeft ? -0.95 : 0.95;
-
-      const fx = a.x + dx * t + nx * sideOffset;
-      const fy = a.y + dy * t + ny * sideOffset;
-
-      const foot = document.createElementNS(svgNS, "ellipse");
-      foot.setAttribute("cx", fx.toFixed(2));
-      foot.setAttribute("cy", fy.toFixed(2));
-      foot.setAttribute("rx", "0.7");
-      foot.setAttribute("ry", "1.28");
-      foot.setAttribute("fill", footColor);
-      foot.setAttribute("transform", `rotate(${angleDeg.toFixed(1)} ${fx.toFixed(2)} ${fy.toFixed(2)})`);
-      foot.setAttribute("class", "footstep-mark");
-      // 3x slower step rhythm (225ms per step vs 75ms previously)
-      foot.style.animationDelay = `${stepIndex * 225}ms`;
-
-      footstepsLayer.appendChild(foot);
-      stepIndex++;
-    }
-  }
-}
-
-document.querySelectorAll(".zone-group").forEach(g => {
-  g.addEventListener("click", () => {
-    if (didDragMap) return;
-    const zId = g.dataset.zone;
-    if (HALL_ZONES[zId]) openZoneInspector(zId);
-  });
-});
-
-// =========================================================
-// 3. 3D ARCHITECTURAL MAQUETTE (THREE.JS + DARK MODE SYNC)
-// =========================================================
-const container3d = document.getElementById("canvas-container");
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xfaf7f0);
-scene.fog = new THREE.FogExp2(0xfaf7f0, 0.0042);
-
-const camera = new THREE.PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.1, 500);
-camera.position.set(0, 76, 66);
-
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
-container3d.appendChild(renderer.domElement);
-
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.target.set(0, 0, 6);
-controls.maxPolarAngle = Math.PI / 2.2;
-controls.minDistance = 22;
-controls.maxDistance = 135;
-
-let targetCamPos = camera.position.clone();
-let targetLookAt = new THREE.Vector3(0, 0, 6);
-let isFlying = false;
-
-scene.add(new THREE.AmbientLight(0xffffff, 1.1));
-const sunLight = new THREE.DirectionalLight(0xfff5e4, 1.15);
-sunLight.position.set(35, 70, 45);
-sunLight.castShadow = true;
-scene.add(sunLight);
-
-let floorMat, wallMat, seatingMat;
-
-function buildHallArchitecture() {
-  const hallGroup = new THREE.Group();
-
-  const floorGeo = new THREE.CylinderGeometry(46, 46, 1.2, 8);
-  floorGeo.rotateY(Math.PI / 8);
-  floorMat = new THREE.MeshStandardMaterial({ color: 0xe6e1d3, roughness: 0.9 });
-  const floor = new THREE.Mesh(floorGeo, floorMat);
-  floor.position.y = -0.6;
-  floor.receiveShadow = true;
-  hallGroup.add(floor);
-
-  const ringGeo = new THREE.RingGeometry(44.6, 46.2, 8);
-  ringGeo.rotateX(-Math.PI / 2);
-  ringGeo.rotateY(Math.PI / 8);
-  const ring = new THREE.Mesh(ringGeo, new THREE.MeshStandardMaterial({ color: 0x113c2b, side: THREE.DoubleSide }));
-  ring.position.y = 0.04;
-  hallGroup.add(ring);
-
-  const stageMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(24, 1.8, 7),
-    new THREE.MeshStandardMaterial({ color: 0x113c2b, roughness: 0.5 })
-  );
-  stageMesh.position.set(0, 0.9, -31);
-  hallGroup.add(stageMesh);
-
-  seatingMat = new THREE.MeshStandardMaterial({ color: 0xd5cfc0 });
-  const seatingMesh = new THREE.Mesh(new THREE.BoxGeometry(24, 0.8, 15), seatingMat);
-  seatingMesh.position.set(0, 0.4, -19);
-  hallGroup.add(seatingMesh);
-
-  const rotundaBase = new THREE.Mesh(
-    new THREE.CylinderGeometry(3.4, 3.8, 1.0, 28),
-    new THREE.MeshStandardMaterial({ color: 0x113c2b })
-  );
-  rotundaBase.position.set(0, 0.5, 3);
-  hallGroup.add(rotundaBase);
-
-  const sculpture = new THREE.Mesh(
-    new THREE.TorusKnotGeometry(1.35, 0.36, 64, 12),
-    new THREE.MeshStandardMaterial({ color: 0xf3842b, roughness: 0.35 })
-  );
-  sculpture.position.set(0, 2.7, 3);
-  hallGroup.add(sculpture);
-
-  wallMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7 });
-  [
-    { x: -16, z: 18, w: 18, d: 0.7, rot: -0.65 },
-    { x: 16, z: 18, w: 18, d: 0.7, rot: 0.65 },
-    { x: -20, z: -15, w: 12, d: 0.7, rot: 0 },
-    { x: 19, z: -7, w: 13, d: 0.7, rot: 0 }
-  ].forEach(w => {
-    const wall = new THREE.Mesh(new THREE.BoxGeometry(w.w, 3.0, w.d), wallMat);
-    wall.position.set(w.x, 1.5, w.z);
-    wall.rotation.y = w.rot;
-    hallGroup.add(wall);
-  });
-
-  scene.add(hallGroup);
-}
-buildHallArchitecture();
-
-const zoneMeshes = {};
-const zoneBeacons = {};
-
-Object.values(HALL_ZONES).forEach(zone => {
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(zone.size.w, 0.55, zone.size.d),
-    new THREE.MeshStandardMaterial({ color: zone.color, transparent: true, opacity: 0.45 })
-  );
-  mesh.position.set(zone.pos.x, 0.28, zone.pos.z);
-  mesh.userData = { zoneId: zone.id };
-  scene.add(mesh);
-  zoneMeshes[zone.id] = mesh;
-
-  const beacon = new THREE.Mesh(
-    new THREE.RingGeometry(2.0, 2.9, 28),
-    new THREE.MeshBasicMaterial({ color: 0xf3842b, side: THREE.DoubleSide })
-  );
-  beacon.rotation.x = -Math.PI / 2;
-  beacon.position.set(zone.pos.x, 4.2, zone.pos.z);
-  beacon.visible = false;
-  scene.add(beacon);
-  zoneBeacons[zone.id] = beacon;
-});
-
-const userPin3d = new THREE.Mesh(
-  new THREE.ConeGeometry(1.5, 3.6, 20),
-  new THREE.MeshStandardMaterial({ color: 0x113c2b })
-);
-userPin3d.rotation.x = Math.PI;
-scene.add(userPin3d);
-
-let pathLine3d = null;
-
-function updateRouteEverywhere(targetZoneId) {
-  drawWalkingFootsteps(targetZoneId);
-
-  const gate = ENTRY_GATES[currentGateKey];
-  userPin3d.position.set(gate.pos.x, 2.4, gate.pos.z);
-
-  if (pathLine3d) scene.remove(pathLine3d);
-  if (targetZoneId && HALL_ZONES[targetZoneId]) {
-    const dest = HALL_ZONES[targetZoneId].pos;
-    const points = [
-      new THREE.Vector3(gate.pos.x, 0.7, gate.pos.z),
-      new THREE.Vector3(0, 0.7, 5),
-      new THREE.Vector3(dest.x, 0.7, dest.z)
-    ];
-    pathLine3d = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(points),
-      new THREE.LineBasicMaterial({ color: isDarkMode ? 0xd8ee52 : 0x113c2b })
-    );
-    scene.add(pathLine3d);
-  }
-}
-
-function flyToZone3d(zoneId) {
-  const z = HALL_ZONES[zoneId];
-  if (!z) return;
-  targetLookAt.set(z.pos.x, 0.5, z.pos.z + 4);
-  targetCamPos.set(z.pos.x, 34, z.pos.z + 30);
-  isFlying = true;
-}
-
-function resetCamera3d() {
-  targetLookAt.set(0, 0, 6);
-  targetCamPos.set(0, 76, 66);
-  isFlying = true;
-}
-
-// 3D Raycasting
-const raycaster = new THREE.Raycaster();
-const pointer = new THREE.Vector2();
-let downPos = { x: 0, y: 0 };
-
-renderer.domElement.addEventListener("pointerdown", e => {
-  isFlying = false;
-  downPos = { x: e.clientX, y: e.clientY };
-});
-
-renderer.domElement.addEventListener("pointerup", e => {
-  if (viewMode !== "3d") return;
-  if (Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 8) return;
-
-  pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
-  pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
-  raycaster.setFromCamera(pointer, camera);
-
-  const hits = raycaster.intersectObjects(Object.values(zoneMeshes));
-  if (hits.length > 0) openZoneInspector(hits[0].object.userData.zoneId);
-});
-
-// =========================================================
-// 4. DARK MODE & LEFT-RAIL VIEW CONTROLS
-// =========================================================
-function applyTheme(dark) {
-  isDarkMode = dark;
-  document.body.classList.toggle("dark-mode", dark);
-  localStorage.setItem("kafart6_theme", dark ? "dark" : "light");
-
-  document.getElementById("icon-moon").classList.toggle("hidden", dark);
-  document.getElementById("icon-sun").classList.toggle("hidden", !dark);
-
-  // Sync Three.js Scene Colors
-  const bgHex = dark ? 0x0b0e11 : 0xfaf7f0;
-  scene.background.setHex(bgHex);
-  scene.fog.color.setHex(bgHex);
-  floorMat.color.setHex(dark ? 0x161d22 : 0xe6e1d3);
-  wallMat.color.setHex(dark ? 0x26313a : 0xffffff);
-  seatingMat.color.setHex(dark ? 0x222b33 : 0xd5cfc0);
-
-  const active = getActiveEvents()[0];
-  updateRouteEverywhere(selectedZoneId || (active && active.zoneId));
-}
-
-document.getElementById("btn-theme").addEventListener("click", () => {
-  applyTheme(!isDarkMode);
-});
-
-const btnMode2d = document.getElementById("btn-mode-2d");
-const btnMode3d = document.getElementById("btn-mode-3d");
-
-function setViewMode(mode) {
-  viewMode = mode;
-  btnMode2d.classList.toggle("active", mode === "2d");
-  btnMode3d.classList.toggle("active", mode === "3d");
-  mapViewport2d.classList.toggle("active", mode === "2d");
-  container3d.classList.toggle("active", mode === "3d");
-}
-
-btnMode2d.addEventListener("click", () => setViewMode("2d"));
-btnMode3d.addEventListener("click", () => setViewMode("3d"));
-
-document.getElementById("btn-recenter").addEventListener("click", () => {
-  if (viewMode === "2d") {
-    resetMapTransform();
-  } else {
-    resetCamera3d();
-  }
-});
-
-// =========================================================
-// 5. EVENT DETAILS & ZONE INSPECTOR MODALS
-// =========================================================
-function formatMMSS(sec) {
-  const m = Math.floor(sec / 60).toString().padStart(2, "0");
-  const s = Math.floor(sec % 60).toString().padStart(2, "0");
-  return `${m}:${s}`;
-}
-
-function getActiveEvents() {
-  return TEST_SCHEDULE.filter(
-    ev => simElapsedSec >= ev.startSec && simElapsedSec < ev.startSec + ev.durationSec
-  );
-}
-
-function openEventDetails(eventId) {
-  const ev = TEST_SCHEDULE.find(item => item.id === eventId);
-  if (!ev) return;
-  selectedEventId = eventId;
-
-  const z = HALL_ZONES[ev.zoneId];
-  const isLive = getActiveEvents().some(a => a.id === ev.id);
-
-  document.getElementById("ev-detail-badge").textContent = isLive ? "HAPPENING NOW" : "SCHEDULED SESSION";
-  document.getElementById("ev-detail-title").textContent = ev.title;
-  document.getElementById("ev-detail-time").textContent =
-    `${formatMMSS(ev.startSec)} – ${formatMMSS(ev.startSec + ev.durationSec)} (${ev.durationSec / 60}m)`;
-  document.getElementById("ev-detail-zone").textContent = `${z.name} • ${z.wing}`;
-  document.getElementById("ev-detail-overview").textContent = ev.overview;
-  document.getElementById("ev-detail-host").textContent = ev.host;
-  document.getElementById("ev-detail-highlights").textContent = ev.highlights;
-
-  document.getElementById("event-detail-modal").classList.remove("hidden");
-}
-
-document.getElementById("btn-close-ev-detail").addEventListener("click", () => {
-  document.getElementById("event-detail-modal").classList.add("hidden");
-});
-
-document.getElementById("btn-ev-walk").addEventListener("click", () => {
-  const ev = TEST_SCHEDULE.find(item => item.id === selectedEventId);
-  if (!ev) return;
-  document.getElementById("event-detail-modal").classList.add("hidden");
-  updateRouteEverywhere(ev.zoneId);
-  if (viewMode === "3d") flyToZone3d(ev.zoneId);
-});
-
-document.getElementById("btn-ev-inspect-zone").addEventListener("click", () => {
-  const ev = TEST_SCHEDULE.find(item => item.id === selectedEventId);
-  if (!ev) return;
-  document.getElementById("event-detail-modal").classList.add("hidden");
-  openZoneInspector(ev.zoneId);
-});
-
-function openZoneInspector(zoneId) {
-  selectedZoneId = zoneId;
-  const z = HALL_ZONES[zoneId];
-  updateRouteEverywhere(zoneId);
-  if (viewMode === "3d") flyToZone3d(zoneId);
-
-  document.getElementById("toast-category").textContent = z.category;
-  document.getElementById("toast-title").textContent = z.name;
-  document.getElementById("toast-wing").textContent = z.wing;
-  document.getElementById("toast-desc").textContent = `“${z.description}”`;
-
-  const activeEv = getActiveEvents().find(ev => ev.zoneId === zoneId);
-  const upcomingEv = TEST_SCHEDULE.find(ev => ev.zoneId === zoneId);
-  document.getElementById("toast-status-badge").textContent = activeEv ? "Live Session" : "Open Access";
-  document.getElementById("toast-event-box").textContent = activeEv
-    ? `Live Now: ${activeEv.title} — ${activeEv.host}`
-    : upcomingEv
-    ? `Featured Session: ${upcomingEv.title} (${formatMMSS(upcomingEv.startSec)})`
-    : "Open for self-guided gallery viewing.";
-
-  const isStamped = stampedZones.includes(zoneId);
-  document.getElementById("checkin-label").textContent = isStamped ? "Stamped" : "Check In";
-  document.getElementById("zone-sheet").classList.remove("hidden");
-}
-
-document.getElementById("toast-close").addEventListener("click", () => {
-  document.getElementById("zone-sheet").classList.add("hidden");
-});
-
-document.getElementById("toast-route").addEventListener("click", () => {
-  if (selectedZoneId) {
-    updateRouteEverywhere(selectedZoneId);
-    document.getElementById("zone-sheet").classList.add("hidden");
-  }
-});
-
-document.getElementById("toast-checkin").addEventListener("click", () => {
-  if (selectedZoneId && !stampedZones.includes(selectedZoneId)) {
-    stampedZones.push(selectedZoneId);
-    localStorage.setItem("kafart6_stamps", JSON.stringify(stampedZones));
-    renderPassport();
-    openZoneInspector(selectedZoneId);
-  }
-});
-
-// =========================================================
-// 6. SCHEDULE, DIRECTORIES & INIT
-// =========================================================
-function updateScheduleUI() {
-  document.getElementById("sim-clock").textContent = `${formatMMSS(simElapsedSec)} / 15:00`;
-  const activeEvents = getActiveEvents();
-  const primary = activeEvents[0];
-
-  Object.keys(HALL_ZONES).forEach(zId => {
-    const isHot = activeEvents.some(ev => ev.zoneId === zId);
-    zoneBeacons[zId].visible = isHot;
-    zoneMeshes[zId].material.opacity = isHot ? 0.85 : 0.4;
-  });
-
-  if (primary) {
-    const rem = primary.startSec + primary.durationSec - simElapsedSec;
-    const z = HALL_ZONES[primary.zoneId];
-    document.getElementById("live-title").textContent = primary.title;
-    document.getElementById("live-zone-label").textContent =
-      `${z.name} • ${z.wing}` + (activeEvents.length > 1 ? ` (+${activeEvents.length - 1} more)` : "");
-    document.getElementById("live-countdown").textContent = `ENDS IN ${formatMMSS(rem)}`;
-
-    document.getElementById("btn-fly-live").onclick = () => {
-      updateRouteEverywhere(primary.zoneId);
-      if (viewMode === "3d") flyToZone3d(primary.zoneId);
-    };
-    document.getElementById("btn-live-details").onclick = () => openEventDetails(primary.id);
-  }
-
-  const listEl = document.getElementById("schedule-list");
-  listEl.innerHTML = TEST_SCHEDULE.map(ev => {
-    const live = activeEvents.some(a => a.id === ev.id);
-    const z = HALL_ZONES[ev.zoneId];
-    return `
-      <div class="sched-row ${live ? "is-live" : ""}">
-        <div>
-          <div class="sched-time-pill">${formatMMSS(ev.startSec)} – ${formatMMSS(ev.startSec + ev.durationSec)} • ${ev.durationSec / 60} MIN</div>
-          <div class="sched-title-lg">${ev.title}</div>
-          <div class="sched-sub-loc">${z.name} (${z.wing})</div>
-        </div>
-        <div class="sched-row-actions">
-          <button class="row-btn-primary" data-walk-zone="${ev.zoneId}">Walk Footsteps</button>
-          <button class="row-btn-secondary" data-detail-ev="${ev.id}">Event Details</button>
-        </div>
-      </div>
-    `;
-  }).join("");
-
-  listEl.querySelectorAll("[data-walk-zone]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      updateRouteEverywhere(btn.dataset.walkZone);
-      if (viewMode === "3d") flyToZone3d(btn.dataset.walkZone);
-    });
-  });
-
-  listEl.querySelectorAll("[data-detail-ev]").forEach(btn => {
-    btn.addEventListener("click", () => openEventDetails(btn.dataset.detailEv));
-  });
-}
-
-function renderZonesAndPassport() {
-  const zGrid = document.getElementById("zone-list");
-  zGrid.innerHTML = Object.values(HALL_ZONES).map(z => `
-    <button class="dir-card" data-zone="${z.id}">
-      <span class="cat-tag">${z.wing}</span>
-      <strong>${z.name}</strong>
-    </button>
-  `).join("");
-  zGrid.querySelectorAll(".dir-card").forEach(btn => {
-    btn.addEventListener("click", () => openZoneInspector(btn.dataset.zone));
-  });
-  renderPassport();
-}
-
-function renderPassport() {
-  const passportZones = Object.values(HALL_ZONES).filter(z => z.passport);
-  const count = passportZones.filter(z => stampedZones.includes(z.id)).length;
-  document.getElementById("stamp-count").textContent = count;
-
-  const pGrid = document.getElementById("passport-grid");
-  pGrid.innerHTML = passportZones.map(z => {
-    const done = stampedZones.includes(z.id);
-    return `
-      <button class="dir-card ${done ? "stamped" : ""}" data-zone="${z.id}">
-        <span class="cat-tag">${done ? "Collected" : "Unvisited"}</span>
-        <strong>${z.name}</strong>
-      </button>
-    `;
-  }).join("");
-  pGrid.querySelectorAll(".dir-card").forEach(btn => {
-    btn.addEventListener("click", () => openZoneInspector(btn.dataset.zone));
-  });
-}
-
-document.querySelectorAll(".cat-pill").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.getElementById("bottom-sheet").classList.remove("collapsed");
-    document.querySelectorAll(".cat-pill, .sheet-view").forEach(el => el.classList.remove("active"));
-    btn.classList.add("active");
-    document.getElementById(`view-${btn.dataset.view}`).classList.add("active");
-  });
-});
-
-document.getElementById("btn-toggle-sheet").addEventListener("click", () => {
-  document.getElementById("bottom-sheet").classList.toggle("collapsed");
-});
-
-document.getElementById("btn-gate").addEventListener("click", () => {
-  document.getElementById("gate-modal").classList.remove("hidden");
-});
-document.getElementById("btn-close-gate").addEventListener("click", () => {
-  document.getElementById("gate-modal").classList.add("hidden");
-});
-document.querySelectorAll(".gate-option").forEach(btn => {
-  btn.addEventListener("click", () => {
-    currentGateKey = btn.dataset.gate;
-    document.getElementById("gate-modal").classList.add("hidden");
-    const active = getActiveEvents()[0];
-    updateRouteEverywhere(selectedZoneId || (active && active.zoneId));
-  });
-});
-
-document.getElementById("btn-sim-pause").addEventListener("click", e => {
-  isPaused = !isPaused;
-  e.target.textContent = isPaused ? "Resume" : "Pause";
-});
-document.getElementById("btn-sim-restart").addEventListener("click", () => {
-  simElapsedSec = 0;
-  updateScheduleUI();
-});
-
-// Initialize
-applyTheme(isDarkMode);
-renderZonesAndPassport();
-updateScheduleUI();
-updateRouteEverywhere("photo_zone");
-
-setInterval(() => {
-  if (!isPaused) {
-    simElapsedSec = (simElapsedSec + 1) % LOOP_TOTAL_SECONDS;
-    updateScheduleUI();
-  }
-}, 1000);
-
-const clock = new THREE.Clock();
-function animate() {
-  requestAnimationFrame(animate);
-  const t = clock.getElapsedTime();
-
-  Object.values(zoneBeacons).forEach(b => {
-    if (b.visible) {
-      const s = 1 + Math.sin(t * 5) * 0.22;
-      b.scale.set(s, s, 1);
-    }
-  });
-
-  if (isFlying) {
-    camera.position.lerp(targetCamPos, 0.07);
-    controls.target.lerp(targetLookAt, 0.07);
-    if (camera.position.distanceTo(targetCamPos) < 0.5) isFlying = false;
-  }
-
-  controls.update();
-  renderer.render(scene, camera);
-}
-animate();
-
-window.addEventListener("resize", () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
+export const LOOP_TOTAL_SECONDS = 900;
