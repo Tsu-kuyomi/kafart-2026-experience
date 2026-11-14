@@ -4,7 +4,8 @@ import { HALL_ZONES, ENTRY_GATES, TEST_SCHEDULE, LOOP_TOTAL_SECONDS } from "./sc
 
 const urlParams = new URLSearchParams(window.location.search);
 let currentGateKey = ENTRY_GATES[urlParams.get("gate")] ? urlParams.get("gate") : "gate_main";
-let viewMode = "2d"; // '2d' | '3d'
+let viewMode = "2d";
+let isDarkMode = localStorage.getItem("kafart6_theme") === "dark";
 let simElapsedSec = 0;
 let isPaused = false;
 let selectedZoneId = null;
@@ -12,7 +13,102 @@ let selectedEventId = null;
 let stampedZones = JSON.parse(localStorage.getItem("kafart6_stamps") || "[]");
 
 // =========================================================
-// 1. 2D HIGH-FIDELITY SVG MAP & ANIMATED WALKING FOOTSTEPS
+// 1. 2D PAN & ZOOM CONTROLLER (TOUCH + WHEEL)
+// =========================================================
+const mapViewport2d = document.getElementById("map-2d-viewport");
+const panZoomLayer = document.getElementById("map-pan-zoom-layer");
+
+let mapTransform = { x: 0, y: 0, scale: 1 };
+let activePointers = new Map();
+let lastPanMid = null;
+let lastPinchDist = null;
+let didDragMap = false;
+
+function applyMapTransform() {
+  panZoomLayer.setAttribute(
+    "transform",
+    `translate(${mapTransform.x.toFixed(2)}, ${mapTransform.y.toFixed(2)}) scale(${mapTransform.scale.toFixed(3)})`
+  );
+}
+
+function resetMapTransform() {
+  mapTransform = { x: 0, y: 0, scale: 1 };
+  applyMapTransform();
+}
+
+mapViewport2d.addEventListener("pointerdown", e => {
+  mapViewport2d.setPointerCapture(e.pointerId);
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  didDragMap = false;
+
+  if (activePointers.size === 1) {
+    lastPanMid = { x: e.clientX, y: e.clientY };
+  } else if (activePointers.size === 2) {
+    const pts = Array.from(activePointers.values());
+    lastPinchDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    lastPanMid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+  }
+});
+
+mapViewport2d.addEventListener("pointermove", e => {
+  if (!activePointers.has(e.pointerId)) return;
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  const svgRect = document.getElementById("hall-svg").getBoundingClientRect();
+  const unitRatio = 108 / Math.max(svgRect.width, 1);
+
+  if (activePointers.size === 1 && lastPanMid) {
+    const dx = e.clientX - lastPanMid.x;
+    const dy = e.clientY - lastPanMid.y;
+    if (Math.hypot(dx, dy) > 4) didDragMap = true;
+    mapTransform.x += dx * unitRatio;
+    mapTransform.y += dy * unitRatio;
+    lastPanMid = { x: e.clientX, y: e.clientY };
+    applyMapTransform();
+  } else if (activePointers.size === 2) {
+    didDragMap = true;
+    const pts = Array.from(activePointers.values());
+    const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+
+    if (lastPinchDist) {
+      const zoomFactor = dist / lastPinchDist;
+      mapTransform.scale = Math.min(3.2, Math.max(0.75, mapTransform.scale * zoomFactor));
+    }
+    if (lastPanMid) {
+      mapTransform.x += (mid.x - lastPanMid.x) * unitRatio;
+      mapTransform.y += (mid.y - lastPanMid.y) * unitRatio;
+    }
+    lastPinchDist = dist;
+    lastPanMid = mid;
+    applyMapTransform();
+  }
+});
+
+function clearPointer(e) {
+  activePointers.delete(e.pointerId);
+  if (activePointers.size === 1) {
+    const remaining = Array.from(activePointers.values())[0];
+    lastPanMid = { x: remaining.x, y: remaining.y };
+    lastPinchDist = null;
+  } else if (activePointers.size === 0) {
+    lastPanMid = null;
+    lastPinchDist = null;
+  }
+}
+
+mapViewport2d.addEventListener("pointerup", clearPointer);
+mapViewport2d.addEventListener("pointercancel", clearPointer);
+
+mapViewport2d.addEventListener("wheel", e => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.12 : 0.9;
+  mapTransform.scale = Math.min(3.2, Math.max(0.75, mapTransform.scale * factor));
+  applyMapTransform();
+}, { passive: false });
+
+// =========================================================
+// 2. SLOW WALKING FOOTSTEPS (3X SLOWER CADENCE)
 // =========================================================
 const svgNS = "http://www.w3.org/2000/svg";
 const footstepsLayer = document.getElementById("footsteps-layer");
@@ -20,17 +116,14 @@ const originPinSvg = document.getElementById("svg-origin-pin");
 const targetRingSvg = document.getElementById("svg-target-ring");
 
 function buildCorridorWaypoints(startSvg, endSvg) {
-  // Route cleanly through main hall aisles instead of cutting diagonally through walls
   const pts = [startSvg];
-
   if (Math.hypot(startSvg.x - endSvg.x, startSvg.y - endSvg.y) > 22) {
-    // Enter outer ring corridor first, then central rotunda hub
     const entryHub = {
       x: Math.sign(startSvg.x) * Math.min(Math.abs(startSvg.x), 26),
       y: Math.sign(startSvg.y) * Math.min(Math.abs(startSvg.y), 26)
     };
     pts.push(entryHub);
-    pts.push({ x: 0, y: 8 }); // Central rotunda walkway
+    pts.push({ x: 0, y: 8 });
   }
   pts.push(endSvg);
   return pts;
@@ -40,7 +133,6 @@ function drawWalkingFootsteps(targetZoneId) {
   const gate = ENTRY_GATES[currentGateKey];
   document.getElementById("gate-label").textContent = gate.short;
 
-  // Update Green Origin Pin on 2D SVG
   const circles = originPinSvg.querySelectorAll("circle");
   circles.forEach(c => {
     c.setAttribute("cx", gate.svgPos.x);
@@ -61,6 +153,7 @@ function drawWalkingFootsteps(targetZoneId) {
   document.getElementById("target-pulse-inner").setAttribute("cy", dest.y);
 
   const waypoints = buildCorridorWaypoints(gate.svgPos, dest);
+  const footColor = isDarkMode ? "#D8EE52" : "#113C2B";
   let stepIndex = 0;
 
   for (let i = 0; i < waypoints.length - 1; i++) {
@@ -70,10 +163,9 @@ function drawWalkingFootsteps(targetZoneId) {
     const dy = b.y - a.y;
     const segLen = Math.hypot(dx, dy);
     const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
-    const stepSpacing = 3.2;
+    const stepSpacing = 3.4;
     const stepsCount = Math.max(1, Math.floor(segLen / stepSpacing));
 
-    // Normal vector for left/right foot offset
     const nx = -dy / (segLen || 1);
     const ny = dx / (segLen || 1);
 
@@ -85,16 +177,16 @@ function drawWalkingFootsteps(targetZoneId) {
       const fx = a.x + dx * t + nx * sideOffset;
       const fy = a.y + dy * t + ny * sideOffset;
 
-      // Crisp shoe-sole vector footprint
       const foot = document.createElementNS(svgNS, "ellipse");
       foot.setAttribute("cx", fx.toFixed(2));
       foot.setAttribute("cy", fy.toFixed(2));
-      foot.setAttribute("rx", "0.68");
-      foot.setAttribute("ry", "1.25");
-      foot.setAttribute("fill", "#113C2B");
+      foot.setAttribute("rx", "0.7");
+      foot.setAttribute("ry", "1.28");
+      foot.setAttribute("fill", footColor);
       foot.setAttribute("transform", `rotate(${angleDeg.toFixed(1)} ${fx.toFixed(2)} ${fy.toFixed(2)})`);
       foot.setAttribute("class", "footstep-mark");
-      foot.style.animationDelay = `${stepIndex * 75}ms`;
+      // 3x slower step rhythm (225ms per step vs 75ms previously)
+      foot.style.animationDelay = `${stepIndex * 225}ms`;
 
       footstepsLayer.appendChild(foot);
       stepIndex++;
@@ -102,16 +194,16 @@ function drawWalkingFootsteps(targetZoneId) {
   }
 }
 
-// Click zones directly on the 2D SVG map
 document.querySelectorAll(".zone-group").forEach(g => {
   g.addEventListener("click", () => {
+    if (didDragMap) return;
     const zId = g.dataset.zone;
     if (HALL_ZONES[zId]) openZoneInspector(zId);
   });
 });
 
 // =========================================================
-// 2. 3D ARCHITECTURAL MAQUETTE (THREE.JS)
+// 3. 3D ARCHITECTURAL MAQUETTE (THREE.JS + DARK MODE SYNC)
 // =========================================================
 const container3d = document.getElementById("canvas-container");
 const scene = new THREE.Scene();
@@ -144,12 +236,15 @@ sunLight.position.set(35, 70, 45);
 sunLight.castShadow = true;
 scene.add(sunLight);
 
+let floorMat, wallMat, seatingMat;
+
 function buildHallArchitecture() {
   const hallGroup = new THREE.Group();
 
   const floorGeo = new THREE.CylinderGeometry(46, 46, 1.2, 8);
   floorGeo.rotateY(Math.PI / 8);
-  const floor = new THREE.Mesh(floorGeo, new THREE.MeshStandardMaterial({ color: 0xe6e1d3, roughness: 0.9 }));
+  floorMat = new THREE.MeshStandardMaterial({ color: 0xe6e1d3, roughness: 0.9 });
+  const floor = new THREE.Mesh(floorGeo, floorMat);
   floor.position.y = -0.6;
   floor.receiveShadow = true;
   hallGroup.add(floor);
@@ -168,10 +263,8 @@ function buildHallArchitecture() {
   stageMesh.position.set(0, 0.9, -31);
   hallGroup.add(stageMesh);
 
-  const seatingMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(24, 0.8, 15),
-    new THREE.MeshStandardMaterial({ color: 0xd5cfc0 })
-  );
+  seatingMat = new THREE.MeshStandardMaterial({ color: 0xd5cfc0 });
+  const seatingMesh = new THREE.Mesh(new THREE.BoxGeometry(24, 0.8, 15), seatingMat);
   seatingMesh.position.set(0, 0.4, -19);
   hallGroup.add(seatingMesh);
 
@@ -189,7 +282,7 @@ function buildHallArchitecture() {
   sculpture.position.set(0, 2.7, 3);
   hallGroup.add(sculpture);
 
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7 });
+  wallMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7 });
   [
     { x: -16, z: 18, w: 18, d: 0.7, rot: -0.65 },
     { x: 16, z: 18, w: 18, d: 0.7, rot: 0.65 },
@@ -255,7 +348,7 @@ function updateRouteEverywhere(targetZoneId) {
     ];
     pathLine3d = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(points),
-      new THREE.LineBasicMaterial({ color: 0x113c2b })
+      new THREE.LineBasicMaterial({ color: isDarkMode ? 0xd8ee52 : 0x113c2b })
     );
     scene.add(pathLine3d);
   }
@@ -266,6 +359,12 @@ function flyToZone3d(zoneId) {
   if (!z) return;
   targetLookAt.set(z.pos.x, 0.5, z.pos.z + 4);
   targetCamPos.set(z.pos.x, 34, z.pos.z + 30);
+  isFlying = true;
+}
+
+function resetCamera3d() {
+  targetLookAt.set(0, 0, 6);
+  targetCamPos.set(0, 76, 66);
   isFlying = true;
 }
 
@@ -292,25 +391,56 @@ renderer.domElement.addEventListener("pointerup", e => {
 });
 
 // =========================================================
-// 3. 2D / 3D VIEW SWITCHER
+// 4. DARK MODE & LEFT-RAIL VIEW CONTROLS
 // =========================================================
+function applyTheme(dark) {
+  isDarkMode = dark;
+  document.body.classList.toggle("dark-mode", dark);
+  localStorage.setItem("kafart6_theme", dark ? "dark" : "light");
+
+  document.getElementById("icon-moon").classList.toggle("hidden", dark);
+  document.getElementById("icon-sun").classList.toggle("hidden", !dark);
+
+  // Sync Three.js Scene Colors
+  const bgHex = dark ? 0x0b0e11 : 0xfaf7f0;
+  scene.background.setHex(bgHex);
+  scene.fog.color.setHex(bgHex);
+  floorMat.color.setHex(dark ? 0x161d22 : 0xe6e1d3);
+  wallMat.color.setHex(dark ? 0x26313a : 0xffffff);
+  seatingMat.color.setHex(dark ? 0x222b33 : 0xd5cfc0);
+
+  const active = getActiveEvents()[0];
+  updateRouteEverywhere(selectedZoneId || (active && active.zoneId));
+}
+
+document.getElementById("btn-theme").addEventListener("click", () => {
+  applyTheme(!isDarkMode);
+});
+
 const btnMode2d = document.getElementById("btn-mode-2d");
 const btnMode3d = document.getElementById("btn-mode-3d");
-const view2dEl = document.getElementById("map-2d-viewport");
 
 function setViewMode(mode) {
   viewMode = mode;
   btnMode2d.classList.toggle("active", mode === "2d");
   btnMode3d.classList.toggle("active", mode === "3d");
-  view2dEl.classList.toggle("active", mode === "2d");
+  mapViewport2d.classList.toggle("active", mode === "2d");
   container3d.classList.toggle("active", mode === "3d");
 }
 
 btnMode2d.addEventListener("click", () => setViewMode("2d"));
 btnMode3d.addEventListener("click", () => setViewMode("3d"));
 
+document.getElementById("btn-recenter").addEventListener("click", () => {
+  if (viewMode === "2d") {
+    resetMapTransform();
+  } else {
+    resetCamera3d();
+  }
+});
+
 // =========================================================
-// 4. IN-DEPTH EVENT DETAILS & ZONE INSPECTOR MODALS
+// 5. EVENT DETAILS & ZONE INSPECTOR MODALS
 // =========================================================
 function formatMMSS(sec) {
   const m = Math.floor(sec / 60).toString().padStart(2, "0");
@@ -335,7 +465,7 @@ function openEventDetails(eventId) {
   document.getElementById("ev-detail-badge").textContent = isLive ? "HAPPENING NOW" : "SCHEDULED SESSION";
   document.getElementById("ev-detail-title").textContent = ev.title;
   document.getElementById("ev-detail-time").textContent =
-    `${formatMMSS(ev.startSec)} – ${formatMMSS(ev.startSec + ev.durationSec)} (${ev.durationSec / 60} mins)`;
+    `${formatMMSS(ev.startSec)} – ${formatMMSS(ev.startSec + ev.durationSec)} (${ev.durationSec / 60}m)`;
   document.getElementById("ev-detail-zone").textContent = `${z.name} • ${z.wing}`;
   document.getElementById("ev-detail-overview").textContent = ev.overview;
   document.getElementById("ev-detail-host").textContent = ev.host;
@@ -409,7 +539,7 @@ document.getElementById("toast-checkin").addEventListener("click", () => {
 });
 
 // =========================================================
-// 5. TIMELINE, DIRECTORIES & NAVIGATION
+// 6. SCHEDULE, DIRECTORIES & INIT
 // =========================================================
 function updateScheduleUI() {
   document.getElementById("sim-clock").textContent = `${formatMMSS(simElapsedSec)} / 15:00`;
@@ -443,12 +573,10 @@ function updateScheduleUI() {
     const z = HALL_ZONES[ev.zoneId];
     return `
       <div class="sched-row ${live ? "is-live" : ""}">
-        <div class="sched-row-top">
-          <div>
-            <div class="sched-time-pill">${formatMMSS(ev.startSec)} – ${formatMMSS(ev.startSec + ev.durationSec)} • ${ev.durationSec / 60} MIN</div>
-            <div class="sched-title-lg">${ev.title}</div>
-            <div class="sched-sub-loc">${z.name} (${z.wing})</div>
-          </div>
+        <div>
+          <div class="sched-time-pill">${formatMMSS(ev.startSec)} – ${formatMMSS(ev.startSec + ev.durationSec)} • ${ev.durationSec / 60} MIN</div>
+          <div class="sched-title-lg">${ev.title}</div>
+          <div class="sched-sub-loc">${z.name} (${z.wing})</div>
         </div>
         <div class="sched-row-actions">
           <button class="row-btn-primary" data-walk-zone="${ev.zoneId}">Walk Footsteps</button>
@@ -504,7 +632,6 @@ function renderPassport() {
   });
 }
 
-// Bottom Tabs & Collapse
 document.querySelectorAll(".cat-pill").forEach(btn => {
   btn.addEventListener("click", () => {
     document.getElementById("bottom-sheet").classList.remove("collapsed");
@@ -518,7 +645,6 @@ document.getElementById("btn-toggle-sheet").addEventListener("click", () => {
   document.getElementById("bottom-sheet").classList.toggle("collapsed");
 });
 
-// Gate Modal
 document.getElementById("btn-gate").addEventListener("click", () => {
   document.getElementById("gate-modal").classList.remove("hidden");
 });
@@ -543,7 +669,8 @@ document.getElementById("btn-sim-restart").addEventListener("click", () => {
   updateScheduleUI();
 });
 
-// Init
+// Initialize
+applyTheme(isDarkMode);
 renderZonesAndPassport();
 updateScheduleUI();
 updateRouteEverywhere("photo_zone");
