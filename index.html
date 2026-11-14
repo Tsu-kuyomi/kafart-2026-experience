@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>kafart 6 — To Have &amp; To Hold</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700&family=Rubik+Mono+One&family=Syne:wght@800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- Full-Viewport 3D Architectural Hall -->
+  <div id="canvas-container"></div>
+
+  <!-- Minimal Floating Top Header -->
+  <header class="top-nav">
+    <div class="wordmark">kafart<span class="dot">.</span>6</div>
+    <div class="top-controls">
+      <button id="btn-gate" class="pill-sand" aria-label="Select Entry Gate">
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
+        <span id="gate-label">Main Gate</span>
+        <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <button id="btn-reset-cam" class="circle-pink" aria-label="Reset Overview">
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Zone Inspector Sheet (Styled after Right Card in Reference) -->
+  <div id="zone-sheet" class="inspector-backdrop hidden">
+    <div class="inspector-card">
+      <div class="inspector-top">
+        <span id="toast-category" class="tag-pill-cream">EXHIBITION</span>
+        <button id="toast-close" class="circle-cream" aria-label="Close Zone Details">
+          <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <h2 id="toast-title" class="display-zone-title">MAIN STAGE</h2>
+
+      <div class="inspector-meta">
+        <span class="meta-item">
+          <svg class="icon-xs" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
+          <span id="toast-wing">North Auditorium</span>
+        </span>
+        <span id="toast-status-badge" class="meta-status">Active Zone</span>
+      </div>
+
+      <p id="toast-desc" class="inspector-quote">“Central auditorium seating facing the KAFART runway stage.”</p>
+
+      <div class="inspector-section-label">CURRENTLY SCHEDULED</div>
+      <div id="toast-event-box" class="inspector-schedule-box">Open for exhibition walkthrough.</div>
+
+      <div class="inspector-actions">
+        <button id="toast-checkin" class="btn-lime-action">
+          <span id="checkin-label">Check In</span>
+          <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+        <button id="toast-route" class="btn-forest-outline">
+          <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+          <span>Route</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Entry Gate Selector Modal -->
+  <div id="gate-modal" class="inspector-backdrop hidden">
+    <div class="gate-sheet">
+      <div class="grab-handle"></div>
+      <span class="eyebrow-orange">WAYFINDING</span>
+      <h3 class="display-modal-title">SELECT YOUR GATE</h3>
+      <p class="modal-sub">We will place a green origin marker at your entrance and trace the walking path inside the hall.</p>
+      <div class="gate-options">
+        <button class="gate-option" data-gate="gate_main">
+          <div>
+            <strong>Main Entrance</strong>
+            <span>West Foyer &amp; Photo Zone</span>
+          </div>
+          <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+        <button class="gate-option" data-gate="gate_vip">
+          <div>
+            <strong>VIP Entrance</strong>
+            <span>North-West Fashion Wing</span>
+          </div>
+          <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+        <button class="gate-option" data-gate="gate_south">
+          <div>
+            <strong>South Entrance</strong>
+            <span>Central Gallery Corridor</span>
+          </div>
+          <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+        <button class="gate-option" data-gate="gate_ne">
+          <div>
+            <strong>North-East Entrance</strong>
+            <span>Backstage &amp; East Wing</span>
+          </div>
+          <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+      <button id="btn-close-gate" class="btn-sand-full">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Bottom Mobile Drawer -->
+  <section id="bottom-sheet" class="bottom-sheet">
+    <button id="btn-toggle-sheet" class="sheet-handle-btn" aria-label="Expand or minimize bottom panel">
+      <span class="grab-handle"></span>
+    </button>
+
+    <!-- 4 Color-Coded Pill Tabs (Exact Reference Colors) -->
+    <nav class="pill-tabs" aria-label="Event Sections">
+      <button class="cat-pill pill-lime active" data-view="live">Live Now</button>
+      <button class="cat-pill pill-orange" data-view="timeline">Schedule</button>
+      <button class="cat-pill pill-forest" data-view="zones">Zones</button>
+      <button class="cat-pill pill-pink" data-view="passport">Passport <span id="stamp-count">0</span>/4</button>
+    </nav>
+
+    <!-- TAB 1: "Tonight's Vibe" Hero Card -->
+    <div id="view-live" class="sheet-view active">
+      <article class="vibe-card">
+        <div class="vibe-left">
+          <div class="live-timer-badge">
+            <span class="pulse-ring"></span>
+            <span id="live-countdown">ENDS IN 02:00</span>
+          </div>
+          <h2 id="live-title" class="vibe-title">Doors Open &amp; Arrivals</h2>
+          <p id="live-zone-label" class="vibe-location">Official Photo Zone</p>
+          <button id="btn-fly-live" class="btn-cream-explore">
+            <span>Explore</span>
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+        <!-- Overlapping Orange Circles from Reference -->
+        <div class="vibe-circles" aria-hidden="true">
+          <span class="circle-a"></span>
+          <span class="circle-b"></span>
+        </div>
+      </article>
+    </div>
+
+    <!-- TAB 2: Organized Rapid Test Schedule -->
+    <div id="view-timeline" class="sheet-view">
+      <div class="sim-toolbar">
+        <div class="clock-readout">
+          <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span>TEST LOOP: <strong id="sim-clock">00:00</strong></span>
+        </div>
+        <div class="sim-btns">
+          <button id="btn-sim-pause" class="mini-pill-btn">Pause</button>
+          <button id="btn-sim-restart" class="mini-pill-btn">Reset</button>
+        </div>
+      </div>
+      <div id="schedule-list" class="organized-list"></div>
+    </div>
+
+    <!-- TAB 3: Hall Zones Directory -->
+    <div id="view-zones" class="sheet-view">
+      <div id="zone-list" class="zone-directory-grid"></div>
+    </div>
+
+    <!-- TAB 4: Biennale Collector Passport -->
+    <div id="view-passport" class="sheet-view">
+      <p class="passport-summary">Check in at all 4 primary exhibition wings inside Umaru Musa Yar'Adua Hall to complete your KAFART 6 visitor record.</p>
+      <div id="passport-grid" class="zone-directory-grid"></div>
+    </div>
+  </section>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
