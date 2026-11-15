@@ -30,9 +30,7 @@
         </filter>
       </defs>
 
-      <!-- Pan & Zoom Transform Layer -->
       <g id="map-pan-zoom-layer">
-        <!-- Architectural Grid -->
         <rect x="-90" y="-90" width="180" height="180" fill="url(#grid-dots)" />
 
         <!-- Outer Octagonal Hall Shell -->
@@ -57,7 +55,6 @@
           <rect x="-14" y="-37" width="28" height="25" rx="2" fill="#113C2B" fill-opacity="0.14" stroke="#113C2B" stroke-width="0.7" />
           <rect x="-11" y="-35.5" width="22" height="5.2" rx="1" fill="#113C2B" />
           <text x="0" y="-32.8" class="arch-label-light" text-anchor="middle" dominant-baseline="middle">KAFART STAGE</text>
-          <!-- Auditorium Seating Rows -->
           <g class="svg-seating">
             <rect x="-10" y="-28.2" width="20" height="1.1" rx="0.4" />
             <rect x="-10" y="-25.8" width="20" height="1.1" rx="0.4" />
@@ -127,7 +124,7 @@
           <text x="32.5" y="-9.5" class="arch-label-xs" text-anchor="middle" dominant-baseline="middle">EXHIB. 5</text>
         </g>
 
-        <!-- Restrooms (South-West & South-East Outer Corridors) -->
+        <!-- Restrooms -->
         <g transform="translate(-30.5, 27) rotate(45)">
           <rect x="-3.4" y="-2.1" width="6.8" height="4.2" rx="0.8" class="svg-neutral-room" stroke-width="0.5" />
           <text x="0" y="0.2" class="arch-label-xs" text-anchor="middle" dominant-baseline="middle">WC</text>
@@ -177,7 +174,7 @@
   <!-- 3D ARCHITECTURAL MAQUETTE VIEWPORT -->
   <div id="canvas-container" class="map-viewport"></div>
 
-  <!-- VERTICAL LEFT-EDGE 2D / 3D SWITCHER + RESET ZOOM -->
+  <!-- VERTICAL LEFT-EDGE 2D / 3D SWITCHER + RESET -->
   <aside class="left-rail" aria-label="Map Controls">
     <div class="vertical-switch" role="group" aria-label="View Mode">
       <button id="btn-mode-2d" class="v-mode-btn active">2D</button>
@@ -193,14 +190,12 @@
     <div class="wordmark">kafart<span class="dot">.</span>6</div>
 
     <div class="top-right-group">
-      <!-- Entry Gate Pill -->
       <button id="btn-gate" class="pill-sand" aria-label="Select Entry Gate">
         <svg class="icon-xs" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
         <span id="gate-label">Main</span>
         <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
       </button>
 
-      <!-- Dark / Light Theme Toggle -->
       <button id="btn-theme" class="circle-theme" aria-label="Toggle Dark Mode">
         <svg id="icon-moon" class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
         <svg id="icon-sun" class="icon-xs hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -212,17 +207,18 @@
   <div id="event-detail-modal" class="inspector-backdrop hidden">
     <article class="detail-sheet">
       <div class="inspector-top">
-        <span id="ev-detail-badge" class="tag-pill-lime">LIVE SESSION</span>
+        <span id="ev-detail-badge" class="tag-pill-lime">DAY 1 • SESSION</span>
         <button id="btn-close-ev-detail" class="circle-cream" aria-label="Close Event Details">
           <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
       </div>
 
-      <h2 id="ev-detail-title" class="display-zone-title">CURATOR WALKTHROUGH</h2>
+      <h2 id="ev-detail-title" class="display-zone-title">SESSION TITLE</h2>
 
       <div class="detail-meta-pills">
-        <span id="ev-detail-time" class="meta-chip">02:00 – 05:00</span>
-        <span id="ev-detail-zone" class="meta-chip">Exhibition 3</span>
+        <span id="ev-detail-time" class="meta-chip">Time</span>
+        <span id="ev-detail-zone" class="meta-chip">Zone</span>
+        <span id="ev-detail-access" class="meta-chip">Open Access</span>
       </div>
 
       <div class="detail-block">
@@ -232,12 +228,12 @@
 
       <div class="detail-grid-2">
         <div class="detail-mini-box">
-          <span class="detail-label">CURATOR / HOST</span>
-          <strong id="ev-detail-host">Ganiyat Sani</strong>
+          <span class="detail-label">FEATURING / SPEAKERS</span>
+          <strong id="ev-detail-host">Speakers</strong>
         </div>
         <div class="detail-mini-box">
-          <span class="detail-label">HIGHLIGHTS</span>
-          <strong id="ev-detail-highlights">Sculpture &amp; Textiles</strong>
+          <span class="detail-label">MODERATOR / PARTNER</span>
+          <strong id="ev-detail-highlights">Format</strong>
         </div>
       </div>
 
@@ -275,7 +271,7 @@
 
       <p id="toast-desc" class="inspector-quote"></p>
 
-      <div class="inspector-section-label">SCHEDULED IN THIS ZONE</div>
+      <div class="inspector-section-label">PROGRAM IN THIS ZONE</div>
       <div id="toast-event-box" class="inspector-schedule-box"></div>
 
       <div class="inspector-actions">
@@ -296,7 +292,7 @@
       <div class="grab-handle"></div>
       <span class="eyebrow-orange">STARTING POINT</span>
       <h3 class="display-modal-title">CHOOSE YOUR GATE</h3>
-      <p class="modal-sub">Footsteps will walk slowly from your selected gate to any zone you choose.</p>
+      <p class="modal-sub">Footsteps will walk from your selected gate to any zone you choose.</p>
       <div class="gate-options">
         <button class="gate-option" data-gate="gate_main">
           <div>
@@ -331,72 +327,85 @@
     </div>
   </div>
 
-  <!-- BOTTOM MOBILE DRAWER -->
+  <!-- SLIDE-DOWN / HIDEABLE BOTTOM NAVIGATION DRAWER -->
   <section id="bottom-sheet" class="bottom-sheet">
-    <button id="btn-toggle-sheet" class="sheet-handle-btn" aria-label="Expand or collapse panel">
+    <button id="btn-toggle-sheet" class="sheet-handle-btn" aria-label="Slide down or expand navigation">
       <span class="grab-handle"></span>
+      <span id="sheet-toggle-hint" class="sheet-hint">
+        <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        <span>Hide Guide</span>
+      </span>
     </button>
 
-    <nav class="pill-tabs" aria-label="Navigation Tabs">
-      <button class="cat-pill pill-lime active" data-view="live">Live Now</button>
-      <button class="cat-pill pill-orange" data-view="timeline">Schedule</button>
-      <button class="cat-pill pill-forest" data-view="zones">Hall Zones</button>
-      <button class="cat-pill pill-pink" data-view="passport">Passport <span id="stamp-count">0</span>/4</button>
-    </nav>
+    <div id="sheet-collapsible-body" class="sheet-body">
+      <nav class="pill-tabs" aria-label="Navigation Tabs">
+        <button class="cat-pill pill-lime active" data-view="live">Live Now</button>
+        <button class="cat-pill pill-orange" data-view="timeline">Program</button>
+        <button class="cat-pill pill-forest" data-view="zones">Hall Zones</button>
+        <button class="cat-pill pill-pink" data-view="passport">Passport <span id="stamp-count">0</span>/4</button>
+      </nav>
 
-    <!-- TAB 1: LIVE NOW HERO CARD -->
-    <div id="view-live" class="sheet-view active">
-      <article class="vibe-card">
-        <div class="vibe-left">
-          <div class="live-timer-badge">
-            <span class="pulse-ring"></span>
-            <span id="live-countdown">ENDS IN 02:00</span>
+      <!-- TAB 1: LIVE NOW HERO CARD -->
+      <div id="view-live" class="sheet-view active">
+        <article class="vibe-card">
+          <div class="vibe-left">
+            <div class="live-timer-badge">
+              <span class="pulse-ring"></span>
+              <span id="live-countdown">DAY 1 • THU NOV 19</span>
+            </div>
+            <h2 id="live-title" class="vibe-title">Welcome Ceremony</h2>
+            <p id="live-zone-label" class="vibe-location">Main Stage • North Auditorium</p>
+
+            <div class="hero-btn-row">
+              <button id="btn-fly-live" class="btn-cream-explore">
+                <span>Walk There</span>
+                <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </button>
+              <button id="btn-live-details" class="btn-outline-cream">
+                <span>Event Details</span>
+              </button>
+            </div>
           </div>
-          <h2 id="live-title" class="vibe-title">Doors Open &amp; Arrivals</h2>
-          <p id="live-zone-label" class="vibe-location">Official Photo Zone</p>
 
-          <div class="hero-btn-row">
-            <button id="btn-fly-live" class="btn-cream-explore">
-              <span>Walk There</span>
-              <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-            </button>
-            <button id="btn-live-details" class="btn-outline-cream">
-              <span>Event Details</span>
-            </button>
+          <div class="vibe-circles" aria-hidden="true">
+            <span class="circle-a"></span>
+            <span class="circle-b"></span>
           </div>
-        </div>
-
-        <div class="vibe-circles" aria-hidden="true">
-          <span class="circle-a"></span>
-          <span class="circle-b"></span>
-        </div>
-      </article>
-    </div>
-
-    <!-- TAB 2: SCHEDULE LIST -->
-    <div id="view-timeline" class="sheet-view">
-      <div class="sim-toolbar">
-        <div class="clock-readout">
-          <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          <span>CLOCK: <strong id="sim-clock">00:00</strong></span>
-        </div>
-        <div class="sim-btns">
-          <button id="btn-sim-pause" class="mini-pill-btn">Pause</button>
-          <button id="btn-sim-restart" class="mini-pill-btn">Reset</button>
-        </div>
+        </article>
       </div>
-      <div id="schedule-list" class="organized-list"></div>
-    </div>
 
-    <!-- TAB 3: HALL ZONES DIRECTORY -->
-    <div id="view-zones" class="sheet-view">
-      <div id="zone-list" class="zone-directory-grid"></div>
-    </div>
+      <!-- TAB 2: 4-DAY OFFICIAL PROGRAM -->
+      <div id="view-timeline" class="sheet-view">
+        <!-- Day Selector Pills (Nov 19 - Nov 22) -->
+        <div class="day-switcher" role="group" aria-label="Select Festival Day">
+          <button class="day-btn active" data-day="1">Day 1<span>Nov 19</span></button>
+          <button class="day-btn" data-day="2">Day 2<span>Nov 20</span></button>
+          <button class="day-btn" data-day="3">Day 3<span>Nov 21</span></button>
+          <button class="day-btn" data-day="4">Day 4<span>Nov 22</span></button>
+        </div>
 
-    <!-- TAB 4: COLLECTOR PASSPORT -->
-    <div id="view-passport" class="sheet-view">
-      <p class="passport-summary">Tap any gallery wing on the map and check in to collect all 4 Biennale visitor stamps.</p>
-      <div id="passport-grid" class="zone-directory-grid"></div>
+        <div class="sim-toolbar">
+          <div class="clock-readout">
+            <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span id="clock-mode-label">DEMO STEP: <strong id="sim-clock">1 / 7</strong></span>
+          </div>
+          <div class="sim-btns">
+            <button id="btn-next-session" class="mini-pill-btn">Next Session →</button>
+          </div>
+        </div>
+        <div id="schedule-list" class="organized-list"></div>
+      </div>
+
+      <!-- TAB 3: HALL ZONES DIRECTORY -->
+      <div id="view-zones" class="sheet-view">
+        <div id="zone-list" class="zone-directory-grid"></div>
+      </div>
+
+      <!-- TAB 4: COLLECTOR PASSPORT -->
+      <div id="view-passport" class="sheet-view">
+        <p class="passport-summary">Tap any gallery wing on the map and check in to collect all 4 Biennale visitor stamps.</p>
+        <div id="passport-grid" class="zone-directory-grid"></div>
+      </div>
     </div>
   </section>
 

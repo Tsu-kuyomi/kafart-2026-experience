@@ -1,19 +1,60 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { HALL_ZONES, ENTRY_GATES, TEST_SCHEDULE, LOOP_TOTAL_SECONDS } from "./schedule.js";
+import { HALL_ZONES, ENTRY_GATES, FESTIVAL_DAYS, OFFICIAL_PROGRAM } from "./schedule.js";
 
 const urlParams = new URLSearchParams(window.location.search);
 let currentGateKey = ENTRY_GATES[urlParams.get("gate")] ? urlParams.get("gate") : "gate_main";
 let viewMode = "2d";
 let isDarkMode = localStorage.getItem("kafart6_theme") === "dark";
-let simElapsedSec = 0;
-let isPaused = false;
+let selectedDay = 1;
+let demoStepIndex = 0; // Steps through the selected day's sessions cleanly
 let selectedZoneId = null;
 let selectedEventId = null;
 let stampedZones = JSON.parse(localStorage.getItem("kafart6_stamps") || "[]");
 
+// Auto-detect if today is Nov 19–22, 2026
+function detectFestivalDay() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  const todayStr = `${y}-${m}-${d}`;
+  const found = Object.entries(FESTIVAL_DAYS).find(([, info]) => info.isoDate === todayStr);
+  return found ? Number(found[0]) : 1;
+}
+selectedDay = detectFestivalDay();
+
 // =========================================================
-// 1. 2D PAN & ZOOM CONTROLLER (TOUCH + WHEEL)
+// 1. SLIDE-DOWN / HIDE NAVIGATION DRAWER (TAP OR SWIPE)
+// =========================================================
+const bottomSheet = document.getElementById("bottom-sheet");
+const sheetToggleBtn = document.getElementById("btn-toggle-sheet");
+const sheetHintText = document.querySelector("#sheet-toggle-hint span");
+
+function setSheetCollapsed(collapsed) {
+  bottomSheet.classList.toggle("collapsed", collapsed);
+  document.body.classList.toggle("sheet-hidden", collapsed);
+  sheetHintText.textContent = collapsed ? "Show Guide" : "Hide Guide";
+}
+
+sheetToggleBtn.addEventListener("click", () => {
+  setSheetCollapsed(!bottomSheet.classList.contains("collapsed"));
+});
+
+// Touch swipe down to hide / swipe up to reveal
+let sheetTouchStartY = 0;
+sheetToggleBtn.addEventListener("touchstart", e => {
+  sheetTouchStartY = e.touches[0].clientY;
+}, { passive: true });
+
+sheetToggleBtn.addEventListener("touchend", e => {
+  const deltaY = e.changedTouches[0].clientY - sheetTouchStartY;
+  if (deltaY > 24) setSheetCollapsed(true);
+  else if (deltaY < -24) setSheetCollapsed(false);
+});
+
+// =========================================================
+// 2. 2D PAN & ZOOM CONTROLLER
 // =========================================================
 const mapViewport2d = document.getElementById("map-2d-viewport");
 const panZoomLayer = document.getElementById("map-pan-zoom-layer");
@@ -108,7 +149,7 @@ mapViewport2d.addEventListener("wheel", e => {
 }, { passive: false });
 
 // =========================================================
-// 2. SLOW WALKING FOOTSTEPS (3X SLOWER CADENCE)
+// 3. SLOW WALKING FOOTSTEPS
 // =========================================================
 const svgNS = "http://www.w3.org/2000/svg";
 const footstepsLayer = document.getElementById("footsteps-layer");
@@ -133,8 +174,7 @@ function drawWalkingFootsteps(targetZoneId) {
   const gate = ENTRY_GATES[currentGateKey];
   document.getElementById("gate-label").textContent = gate.short;
 
-  const circles = originPinSvg.querySelectorAll("circle");
-  circles.forEach(c => {
+  originPinSvg.querySelectorAll("circle").forEach(c => {
     c.setAttribute("cx", gate.svgPos.x);
     c.setAttribute("cy", gate.svgPos.y);
   });
@@ -185,7 +225,6 @@ function drawWalkingFootsteps(targetZoneId) {
       foot.setAttribute("fill", footColor);
       foot.setAttribute("transform", `rotate(${angleDeg.toFixed(1)} ${fx.toFixed(2)} ${fy.toFixed(2)})`);
       foot.setAttribute("class", "footstep-mark");
-      // 3x slower step rhythm (225ms per step vs 75ms previously)
       foot.style.animationDelay = `${stepIndex * 225}ms`;
 
       footstepsLayer.appendChild(foot);
@@ -203,7 +242,7 @@ document.querySelectorAll(".zone-group").forEach(g => {
 });
 
 // =========================================================
-// 3. 3D ARCHITECTURAL MAQUETTE (THREE.JS + DARK MODE SYNC)
+// 4. 3D ARCHITECTURAL MAQUETTE (THREE.JS)
 // =========================================================
 const container3d = document.getElementById("canvas-container");
 const scene = new THREE.Scene();
@@ -368,7 +407,6 @@ function resetCamera3d() {
   isFlying = true;
 }
 
-// 3D Raycasting
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 let downPos = { x: 0, y: 0 };
@@ -391,7 +429,7 @@ renderer.domElement.addEventListener("pointerup", e => {
 });
 
 // =========================================================
-// 4. DARK MODE & LEFT-RAIL VIEW CONTROLS
+// 5. DARK MODE & VIEW SWITCHER
 // =========================================================
 function applyTheme(dark) {
   isDarkMode = dark;
@@ -401,7 +439,6 @@ function applyTheme(dark) {
   document.getElementById("icon-moon").classList.toggle("hidden", dark);
   document.getElementById("icon-sun").classList.toggle("hidden", !dark);
 
-  // Sync Three.js Scene Colors
   const bgHex = dark ? 0x0b0e11 : 0xfaf7f0;
   scene.background.setHex(bgHex);
   scene.fog.color.setHex(bgHex);
@@ -409,13 +446,11 @@ function applyTheme(dark) {
   wallMat.color.setHex(dark ? 0x26313a : 0xffffff);
   seatingMat.color.setHex(dark ? 0x222b33 : 0xd5cfc0);
 
-  const active = getActiveEvents()[0];
-  updateRouteEverywhere(selectedZoneId || (active && active.zoneId));
+  const currentEv = getCurrentFeaturedSession();
+  updateRouteEverywhere(selectedZoneId || (currentEv && currentEv.zoneId));
 }
 
-document.getElementById("btn-theme").addEventListener("click", () => {
-  applyTheme(!isDarkMode);
-});
+document.getElementById("btn-theme").addEventListener("click", () => applyTheme(!isDarkMode));
 
 const btnMode2d = document.getElementById("btn-mode-2d");
 const btnMode3d = document.getElementById("btn-mode-3d");
@@ -432,44 +467,51 @@ btnMode2d.addEventListener("click", () => setViewMode("2d"));
 btnMode3d.addEventListener("click", () => setViewMode("3d"));
 
 document.getElementById("btn-recenter").addEventListener("click", () => {
-  if (viewMode === "2d") {
-    resetMapTransform();
-  } else {
-    resetCamera3d();
-  }
+  if (viewMode === "2d") resetMapTransform();
+  else resetCamera3d();
 });
 
 // =========================================================
-// 5. EVENT DETAILS & ZONE INSPECTOR MODALS
+// 6. OFFICIAL 4-DAY SCHEDULE ENGINE
 // =========================================================
-function formatMMSS(sec) {
-  const m = Math.floor(sec / 60).toString().padStart(2, "0");
-  const s = Math.floor(sec % 60).toString().padStart(2, "0");
-  return `${m}:${s}`;
+function getDaySessions(dayNum) {
+  return OFFICIAL_PROGRAM.filter(ev => ev.day === dayNum);
 }
 
-function getActiveEvents() {
-  return TEST_SCHEDULE.filter(
-    ev => simElapsedSec >= ev.startSec && simElapsedSec < ev.startSec + ev.durationSec
-  );
+function getCurrentFeaturedSession() {
+  const daySessions = getDaySessions(selectedDay);
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  const todayStr = `${y}-${m}-${d}`;
+
+  // If today matches the selected festival day, match real clock time first
+  if (FESTIVAL_DAYS[selectedDay].isoDate === todayStr) {
+    const mins = now.getHours() * 60 + now.getMinutes();
+    const liveMatch = daySessions.find(ev => mins >= ev.startMin && mins < ev.endMin);
+    if (liveMatch) return liveMatch;
+  }
+
+  return daySessions[demoStepIndex % daySessions.length];
 }
 
 function openEventDetails(eventId) {
-  const ev = TEST_SCHEDULE.find(item => item.id === eventId);
+  const ev = OFFICIAL_PROGRAM.find(item => item.id === eventId);
   if (!ev) return;
   selectedEventId = eventId;
 
   const z = HALL_ZONES[ev.zoneId];
-  const isLive = getActiveEvents().some(a => a.id === ev.id);
+  const dayInfo = FESTIVAL_DAYS[ev.day];
 
-  document.getElementById("ev-detail-badge").textContent = isLive ? "HAPPENING NOW" : "SCHEDULED SESSION";
+  document.getElementById("ev-detail-badge").textContent = `${dayInfo.label.toUpperCase()} • ${dayInfo.dateLabel.toUpperCase()}`;
   document.getElementById("ev-detail-title").textContent = ev.title;
-  document.getElementById("ev-detail-time").textContent =
-    `${formatMMSS(ev.startSec)} – ${formatMMSS(ev.startSec + ev.durationSec)} (${ev.durationSec / 60}m)`;
+  document.getElementById("ev-detail-time").textContent = ev.timeLabel;
   document.getElementById("ev-detail-zone").textContent = `${z.name} • ${z.wing}`;
+  document.getElementById("ev-detail-access").textContent = ev.access;
   document.getElementById("ev-detail-overview").textContent = ev.overview;
-  document.getElementById("ev-detail-host").textContent = ev.host;
-  document.getElementById("ev-detail-highlights").textContent = ev.highlights;
+  document.getElementById("ev-detail-host").textContent = ev.featuring;
+  document.getElementById("ev-detail-highlights").textContent = ev.moderator;
 
   document.getElementById("event-detail-modal").classList.remove("hidden");
 }
@@ -479,7 +521,7 @@ document.getElementById("btn-close-ev-detail").addEventListener("click", () => {
 });
 
 document.getElementById("btn-ev-walk").addEventListener("click", () => {
-  const ev = TEST_SCHEDULE.find(item => item.id === selectedEventId);
+  const ev = OFFICIAL_PROGRAM.find(item => item.id === selectedEventId);
   if (!ev) return;
   document.getElementById("event-detail-modal").classList.add("hidden");
   updateRouteEverywhere(ev.zoneId);
@@ -487,7 +529,7 @@ document.getElementById("btn-ev-walk").addEventListener("click", () => {
 });
 
 document.getElementById("btn-ev-inspect-zone").addEventListener("click", () => {
-  const ev = TEST_SCHEDULE.find(item => item.id === selectedEventId);
+  const ev = OFFICIAL_PROGRAM.find(item => item.id === selectedEventId);
   if (!ev) return;
   document.getElementById("event-detail-modal").classList.add("hidden");
   openZoneInspector(ev.zoneId);
@@ -504,14 +546,11 @@ function openZoneInspector(zoneId) {
   document.getElementById("toast-wing").textContent = z.wing;
   document.getElementById("toast-desc").textContent = `“${z.description}”`;
 
-  const activeEv = getActiveEvents().find(ev => ev.zoneId === zoneId);
-  const upcomingEv = TEST_SCHEDULE.find(ev => ev.zoneId === zoneId);
-  document.getElementById("toast-status-badge").textContent = activeEv ? "Live Session" : "Open Access";
-  document.getElementById("toast-event-box").textContent = activeEv
-    ? `Live Now: ${activeEv.title} — ${activeEv.host}`
-    : upcomingEv
-    ? `Featured Session: ${upcomingEv.title} (${formatMMSS(upcomingEv.startSec)})`
-    : "Open for self-guided gallery viewing.";
+  const daySessions = getDaySessions(selectedDay).filter(ev => ev.zoneId === zoneId);
+  document.getElementById("toast-status-badge").textContent = `${FESTIVAL_DAYS[selectedDay].label}`;
+  document.getElementById("toast-event-box").textContent = daySessions.length
+    ? daySessions.map(s => `${s.timeLabel}: ${s.title}`).join(" • ")
+    : "Open for continuous exhibition walkthrough & vendor browsing.";
 
   const isStamped = stampedZones.includes(zoneId);
   document.getElementById("checkin-label").textContent = isStamped ? "Stamped" : "Check In";
@@ -538,48 +577,51 @@ document.getElementById("toast-checkin").addEventListener("click", () => {
   }
 });
 
-// =========================================================
-// 6. SCHEDULE, DIRECTORIES & INIT
-// =========================================================
 function updateScheduleUI() {
-  document.getElementById("sim-clock").textContent = `${formatMMSS(simElapsedSec)} / 15:00`;
-  const activeEvents = getActiveEvents();
-  const primary = activeEvents[0];
+  const daySessions = getDaySessions(selectedDay);
+  const featured = getCurrentFeaturedSession();
+  const dayInfo = FESTIVAL_DAYS[selectedDay];
+
+  document.querySelectorAll(".day-btn").forEach(btn => {
+    btn.classList.toggle("active", Number(btn.dataset.day) === selectedDay);
+  });
+
+  document.getElementById("sim-clock").textContent =
+    `${(demoStepIndex % daySessions.length) + 1} / ${daySessions.length}`;
 
   Object.keys(HALL_ZONES).forEach(zId => {
-    const isHot = activeEvents.some(ev => ev.zoneId === zId);
+    const isHot = featured && featured.zoneId === zId;
     zoneBeacons[zId].visible = isHot;
     zoneMeshes[zId].material.opacity = isHot ? 0.85 : 0.4;
   });
 
-  if (primary) {
-    const rem = primary.startSec + primary.durationSec - simElapsedSec;
-    const z = HALL_ZONES[primary.zoneId];
-    document.getElementById("live-title").textContent = primary.title;
-    document.getElementById("live-zone-label").textContent =
-      `${z.name} • ${z.wing}` + (activeEvents.length > 1 ? ` (+${activeEvents.length - 1} more)` : "");
-    document.getElementById("live-countdown").textContent = `ENDS IN ${formatMMSS(rem)}`;
+  if (featured) {
+    const z = HALL_ZONES[featured.zoneId];
+    document.getElementById("live-countdown").textContent =
+      `${dayInfo.label.toUpperCase()} • ${featured.timeLabel.toUpperCase()}`;
+    document.getElementById("live-title").textContent = featured.title;
+    document.getElementById("live-zone-label").textContent = `${z.name} • ${z.wing}`;
 
     document.getElementById("btn-fly-live").onclick = () => {
-      updateRouteEverywhere(primary.zoneId);
-      if (viewMode === "3d") flyToZone3d(primary.zoneId);
+      updateRouteEverywhere(featured.zoneId);
+      if (viewMode === "3d") flyToZone3d(featured.zoneId);
     };
-    document.getElementById("btn-live-details").onclick = () => openEventDetails(primary.id);
+    document.getElementById("btn-live-details").onclick = () => openEventDetails(featured.id);
   }
 
   const listEl = document.getElementById("schedule-list");
-  listEl.innerHTML = TEST_SCHEDULE.map(ev => {
-    const live = activeEvents.some(a => a.id === ev.id);
+  listEl.innerHTML = daySessions.map(ev => {
+    const isFeatured = featured && featured.id === ev.id;
     const z = HALL_ZONES[ev.zoneId];
     return `
-      <div class="sched-row ${live ? "is-live" : ""}">
+      <div class="sched-row ${isFeatured ? "is-live" : ""}">
         <div>
-          <div class="sched-time-pill">${formatMMSS(ev.startSec)} – ${formatMMSS(ev.startSec + ev.durationSec)} • ${ev.durationSec / 60} MIN</div>
+          <div class="sched-time-pill">${ev.timeLabel} • ${ev.access.toUpperCase()}</div>
           <div class="sched-title-lg">${ev.title}</div>
           <div class="sched-sub-loc">${z.name} (${z.wing})</div>
         </div>
         <div class="sched-row-actions">
-          <button class="row-btn-primary" data-walk-zone="${ev.zoneId}">Walk Footsteps</button>
+          <button class="row-btn-primary" data-walk-zone="${ev.zoneId}" data-ev-id="${ev.id}">Walk Footsteps</button>
           <button class="row-btn-secondary" data-detail-ev="${ev.id}">Event Details</button>
         </div>
       </div>
@@ -588,6 +630,9 @@ function updateScheduleUI() {
 
   listEl.querySelectorAll("[data-walk-zone]").forEach(btn => {
     btn.addEventListener("click", () => {
+      const idx = daySessions.findIndex(s => s.id === btn.dataset.evId);
+      if (idx >= 0) demoStepIndex = idx;
+      updateScheduleUI();
       updateRouteEverywhere(btn.dataset.walkZone);
       if (viewMode === "3d") flyToZone3d(btn.dataset.walkZone);
     });
@@ -597,6 +642,29 @@ function updateScheduleUI() {
     btn.addEventListener("click", () => openEventDetails(btn.dataset.detailEv));
   });
 }
+
+document.querySelectorAll(".day-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    selectedDay = Number(btn.dataset.day);
+    demoStepIndex = 0;
+    selectedZoneId = null;
+    updateScheduleUI();
+    const featured = getCurrentFeaturedSession();
+    if (featured) updateRouteEverywhere(featured.zoneId);
+  });
+});
+
+document.getElementById("btn-next-session").addEventListener("click", () => {
+  const daySessions = getDaySessions(selectedDay);
+  demoStepIndex = (demoStepIndex + 1) % daySessions.length;
+  selectedZoneId = null;
+  updateScheduleUI();
+  const featured = getCurrentFeaturedSession();
+  if (featured) {
+    updateRouteEverywhere(featured.zoneId);
+    if (viewMode === "3d") flyToZone3d(featured.zoneId);
+  }
+});
 
 function renderZonesAndPassport() {
   const zGrid = document.getElementById("zone-list");
@@ -634,15 +702,11 @@ function renderPassport() {
 
 document.querySelectorAll(".cat-pill").forEach(btn => {
   btn.addEventListener("click", () => {
-    document.getElementById("bottom-sheet").classList.remove("collapsed");
+    setSheetCollapsed(false);
     document.querySelectorAll(".cat-pill, .sheet-view").forEach(el => el.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById(`view-${btn.dataset.view}`).classList.add("active");
   });
-});
-
-document.getElementById("btn-toggle-sheet").addEventListener("click", () => {
-  document.getElementById("bottom-sheet").classList.toggle("collapsed");
 });
 
 document.getElementById("btn-gate").addEventListener("click", () => {
@@ -655,32 +719,17 @@ document.querySelectorAll(".gate-option").forEach(btn => {
   btn.addEventListener("click", () => {
     currentGateKey = btn.dataset.gate;
     document.getElementById("gate-modal").classList.add("hidden");
-    const active = getActiveEvents()[0];
-    updateRouteEverywhere(selectedZoneId || (active && active.zoneId));
+    const featured = getCurrentFeaturedSession();
+    updateRouteEverywhere(selectedZoneId || (featured && featured.zoneId));
   });
-});
-
-document.getElementById("btn-sim-pause").addEventListener("click", e => {
-  isPaused = !isPaused;
-  e.target.textContent = isPaused ? "Resume" : "Pause";
-});
-document.getElementById("btn-sim-restart").addEventListener("click", () => {
-  simElapsedSec = 0;
-  updateScheduleUI();
 });
 
 // Initialize
 applyTheme(isDarkMode);
 renderZonesAndPassport();
 updateScheduleUI();
-updateRouteEverywhere("photo_zone");
-
-setInterval(() => {
-  if (!isPaused) {
-    simElapsedSec = (simElapsedSec + 1) % LOOP_TOTAL_SECONDS;
-    updateScheduleUI();
-  }
-}, 1000);
+const initialFeatured = getCurrentFeaturedSession();
+if (initialFeatured) updateRouteEverywhere(initialFeatured.zoneId);
 
 const clock = new THREE.Clock();
 function animate() {
