@@ -40,7 +40,6 @@ let stampedZones = JSON.parse(localStorage.getItem("kafart6_stamps") || "[]");
 let unlockedCodes = JSON.parse(localStorage.getItem("kafart6_qr_unlocks") || "[]");
 let swappedPrintIds = JSON.parse(localStorage.getItem("kafart6_swapped_prints") || "[]");
 
-// Check URL for QR secret unlock parameter (e.g. ?unlock=curator)
 const urlUnlock = (urlParams.get("unlock") || "").trim().toUpperCase();
 if (urlUnlock && !unlockedCodes.includes(urlUnlock)) {
   unlockedCodes.push(urlUnlock);
@@ -56,7 +55,74 @@ function detectFestivalDay() {
 selectedDay = detectFestivalDay();
 
 // =========================================================
-// 1. SLIDE-DOWN / HIDE NAVIGATION DRAWER
+// 1. FIRST-OPEN INTERACTIVE TOUR (WITH SKIP)
+// =========================================================
+const TOUR_STEPS = [
+  {
+    pill: "STEP 1 OF 3",
+    title: "LIVE HALL WAYFINDING",
+    desc: "CHOOSE YOUR ENTRY GATE AT THE TOP RIGHT, THEN TAP ANY GALLERY WING OR SESSION TO WATCH FOOTSTEPS WALK YOU THERE IN 2D OR 3D.",
+    svg: `<svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>`
+  },
+  {
+    pill: "STEP 2 OF 3",
+    title: "4-DAY PROGRAM & ZONES",
+    desc: "EXPLORE EVERY RUNWAY SHOW, WORKSHOP, AND PANEL FROM NOV 19–22 INSIDE THE HOME HUB — OR SLIDE THE GUIDE DOWN FOR AN UNOBSTRUCTED 3D VIEW.",
+    svg: `<svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`
+  },
+  {
+    pill: "STEP 3 OF 3",
+    title: "BOOTH & DIGITAL PRINT SWAP",
+    desc: "OPEN BOOTH ON YOUR HOME SCREEN TO SNAP FRAMED PORTRAITS, SCAN HIDDEN HALL QR CODES FOR SECRET FRAMES, AND SWAP PRINTS ON THE BIENNALE WALL.",
+    svg: `<svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`
+  }
+];
+
+let tourStepIndex = 0;
+const tourOverlay = document.getElementById("tour-overlay");
+
+function renderTourStep() {
+  const step = TOUR_STEPS[tourStepIndex];
+  document.getElementById("tour-step-pill").textContent = step.pill;
+  document.getElementById("tour-icon-box").innerHTML = step.svg;
+  document.getElementById("tour-title").textContent = step.title;
+  document.getElementById("tour-desc").textContent = step.desc;
+  document.getElementById("tour-next-label").textContent =
+    tourStepIndex === TOUR_STEPS.length - 1 ? "START EXPLORING" : "NEXT";
+
+  document.querySelectorAll(".t-dot").forEach((dot, idx) => {
+    dot.classList.toggle("active", idx === tourStepIndex);
+  });
+}
+
+function openTour() {
+  tourStepIndex = 0;
+  renderTourStep();
+  tourOverlay.classList.remove("hidden");
+}
+
+function closeTour() {
+  tourOverlay.classList.add("hidden");
+  localStorage.setItem("kafart6_tour_done", "true");
+}
+
+document.getElementById("btn-tour-skip").addEventListener("click", closeTour);
+document.getElementById("btn-replay-tour").addEventListener("click", openTour);
+document.getElementById("btn-tour-next").addEventListener("click", () => {
+  if (tourStepIndex < TOUR_STEPS.length - 1) {
+    tourStepIndex++;
+    renderTourStep();
+  } else {
+    closeTour();
+  }
+});
+
+if (!localStorage.getItem("kafart6_tour_done")) {
+  openTour();
+}
+
+// =========================================================
+// 2. SLIDE-DOWN / HIDE NAVIGATION DRAWER
 // =========================================================
 const bottomSheet = document.getElementById("bottom-sheet");
 const sheetToggleBtn = document.getElementById("btn-toggle-sheet");
@@ -84,7 +150,7 @@ sheetToggleBtn.addEventListener("touchend", e => {
 });
 
 // =========================================================
-// 2. 2D PAN & ZOOM CONTROLLER
+// 3. 2D PAN & ZOOM CONTROLLER
 // =========================================================
 const mapViewport2d = document.getElementById("map-2d-viewport");
 const panZoomLayer = document.getElementById("map-pan-zoom-layer");
@@ -177,7 +243,7 @@ mapViewport2d.addEventListener("wheel", e => {
 }, { passive: false });
 
 // =========================================================
-// 3. SLOW WALKING FOOTSTEPS
+// 4. SLOW WALKING FOOTSTEPS
 // =========================================================
 const svgNS = "http://www.w3.org/2000/svg";
 const footstepsLayer = document.getElementById("footsteps-layer");
@@ -265,7 +331,7 @@ document.querySelectorAll(".zone-group").forEach(g => {
 });
 
 // =========================================================
-// 4. 3D ARCHITECTURAL MAQUETTE
+// 5. 3D ARCHITECTURAL MAQUETTE
 // =========================================================
 const container3d = document.getElementById("canvas-container");
 const scene = new THREE.Scene();
@@ -444,10 +510,9 @@ renderer.domElement.addEventListener("pointerup", e => {
 });
 
 // =========================================================
-// 5. 100% PROCEDURAL 10-FRAME PHOTO BOOTH STUDIO (WITH 1 HD)
+// 6. PROCEDURAL 10-FRAME PHOTO BOOTH STUDIO (INSIDE HOME)
 // =========================================================
 const boothCanvas = document.getElementById("booth-canvas");
-const boothCtx = boothCanvas.getContext("2d");
 const cameraVideo = document.getElementById("camera-video");
 
 let selectedFrameId = "f1";
@@ -458,7 +523,6 @@ function isFrameUnlocked(frame) {
   return !frame.secretCode || unlockedCodes.includes(frame.secretCode);
 }
 
-// Procedural Canvas Renderer — Draws 10 Unique Architectural/Cultural Frames from Scratch
 function renderFramedArtwork(targetCanvas, frameId, sourceImage) {
   const ctx = targetCanvas.getContext("2d");
   const w = targetCanvas.width;
@@ -468,7 +532,6 @@ function renderFramedArtwork(targetCanvas, frameId, sourceImage) {
 
   ctx.clearRect(0, 0, w, h);
 
-  // Frame Palette & Theme Setup
   const themes = {
     f1: { bg: "#FAF7F0", border: "#113C2B", accent: "#F3842B", text: "#141413", title: "TO HAVE & TO HOLD" },
     f2: { bg: "#113C2B", border: "#D8EE52", accent: "#F3842B", text: "#D8EE52", title: "SAHELIAN LOOM • KADUNA" },
@@ -486,13 +549,11 @@ function renderFramedArtwork(targetCanvas, frameId, sourceImage) {
   ctx.fillStyle = t.bg;
   ctx.fillRect(0, 0, w, h);
 
-  // Photo Viewport Coordinates
   const px = pad;
   const py = pad;
   const pw = w - pad * 2;
   const ph = h - pad - bottomBar;
 
-  // Draw Photo or Stylized Placeholder Artwork
   ctx.save();
   ctx.beginPath();
   ctx.roundRect(px, py, pw, ph, Math.round(w * 0.025));
@@ -511,7 +572,6 @@ function renderFramedArtwork(targetCanvas, frameId, sourceImage) {
     }
     ctx.drawImage(sourceImage, offX, offY, drawW, drawH);
   } else {
-    // Procedural Geometric Art Poster Placeholder
     ctx.fillStyle = "#1E262C";
     ctx.fillRect(px, py, pw, ph);
     ctx.fillStyle = t.accent;
@@ -530,12 +590,10 @@ function renderFramedArtwork(targetCanvas, frameId, sourceImage) {
   }
   ctx.restore();
 
-  // Procedural Decorative Geometry Unique to Frame Type
   ctx.strokeStyle = t.border;
   ctx.lineWidth = Math.max(3, Math.round(w * 0.007));
   ctx.strokeRect(px, py, pw, ph);
 
-  // Geometric Woven Strip Accent on Side Borders for Loom / Secret Frames
   if (["f2", "f7", "f9", "f10"].includes(frameId)) {
     ctx.fillStyle = t.accent;
     const step = Math.round(h * 0.045);
@@ -545,7 +603,6 @@ function renderFramedArtwork(targetCanvas, frameId, sourceImage) {
     }
   }
 
-  // Double Orb Motif for Frame 6 & 10
   if (frameId === "f6" || frameId === "f10") {
     ctx.fillStyle = t.accent;
     ctx.beginPath();
@@ -557,7 +614,6 @@ function renderFramedArtwork(targetCanvas, frameId, sourceImage) {
     ctx.fill();
   }
 
-  // Bottom Typography Masthead
   ctx.fillStyle = t.text;
   ctx.textAlign = "left";
   ctx.font = `800 ${Math.round(w * 0.042)}px "Syne", sans-serif`;
@@ -604,7 +660,6 @@ function renderFrameSelector() {
   });
 }
 
-// Live Camera & Upload Controls
 document.getElementById("btn-start-camera").addEventListener("click", async () => {
   try {
     cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
@@ -654,7 +709,6 @@ document.getElementById("input-upload-photo").addEventListener("change", e => {
   reader.readAsDataURL(file);
 });
 
-// Download Print (Full 2160x2700 HD for Frame 10, 1080x1350 Standard for 1-9)
 document.getElementById("btn-download-frame").addEventListener("click", () => {
   const frameObj = BOOTH_FRAMES.find(f => f.id === selectedFrameId);
   const exportCanvas = document.createElement("canvas");
@@ -672,7 +726,6 @@ document.getElementById("btn-download-frame").addEventListener("click", () => {
     frameObj && frameObj.isHD ? "SAVED IN FULL HD (2160×2700)!" : "SAVED TO YOUR PHONE!";
 });
 
-// QR Secret Unlock Modal
 document.getElementById("btn-open-qr-unlock").addEventListener("click", () => {
   document.getElementById("qr-unlock-modal").classList.remove("hidden");
 });
@@ -698,7 +751,6 @@ document.getElementById("btn-submit-qr-code").addEventListener("click", () => {
   msgEl.textContent = `UNLOCKED: ${match.name}!`;
 });
 
-// Copyable Hashtag Captions
 function renderCaptions() {
   const list = document.getElementById("caption-list");
   list.innerHTML = SHARE_CAPTIONS.map((cap, idx) => `
@@ -728,7 +780,7 @@ document.getElementById("btn-shuffle-captions").addEventListener("click", () => 
 });
 
 // =========================================================
-// 6. DIGITAL PRINT SWAP WALL (SUPABASE + LOCAL FALLBACK)
+// 7. DIGITAL PRINT SWAP WALL (SUPABASE + LOCAL FALLBACK)
 // =========================================================
 function buildSeededArchivalPrints() {
   const seeds = [
@@ -759,7 +811,6 @@ async function pinCurrentPhotoToWall() {
   const statusEl = document.getElementById("booth-status-msg");
   statusEl.textContent = "COMPRESSING & PINNING TO WALL...";
 
-  // Lightweight 400x500 thumbnail (~40KB) to conserve Supabase free tier
   const thumbCanvas = document.createElement("canvas");
   thumbCanvas.width = 400;
   thumbCanvas.height = 500;
@@ -777,7 +828,6 @@ async function pinCurrentPhotoToWall() {
     thumb_url: thumbDataUrl
   };
 
-  // Optional Supabase Cloud Bucket Upload when keys are configured
   if (SUPABASE_CONFIG.url && SUPABASE_CONFIG.anonKey) {
     try {
       const blob = await (await fetch(thumbDataUrl)).blob();
@@ -813,7 +863,7 @@ async function pinCurrentPhotoToWall() {
         });
       }
     } catch {
-      // Falls back seamlessly to local wall storage
+      // Seamless local fallback
     }
   }
 
@@ -894,7 +944,8 @@ function renderMemoryWall() {
       if (!item || item.device_id === DEVICE_ID) return;
 
       if (!userHasContributed) {
-        switchPrimaryTab("booth");
+        switchPrimaryTab("home");
+        showHomeSubView("booth");
         document.getElementById("booth-status-msg").textContent = "PIN 1 PHOTO FIRST TO SWAP PRINTS!";
         return;
       }
@@ -909,7 +960,7 @@ function renderMemoryWall() {
 }
 
 // =========================================================
-// 7. THEME, TABS, SCHEDULE & PASSPORT
+// 8. THEME, 2-TAB NAVIGATION & HOME SUB-VIEWS
 // =========================================================
 function applyTheme(dark) {
   isDarkMode = dark;
@@ -962,17 +1013,21 @@ document.querySelectorAll(".main-tab").forEach(btn => {
   btn.addEventListener("click", () => switchPrimaryTab(btn.dataset.tab));
 });
 
-// Explore Sub-Views (Home / 4-Day Program / Hall Zones)
-function showExploreSubView(sub) {
-  document.getElementById("explore-home").classList.toggle("hidden", sub !== "home");
-  document.getElementById("explore-program").classList.toggle("hidden", sub !== "program");
-  document.getElementById("explore-zones").classList.toggle("hidden", sub !== "zones");
+// Home Sub-Views (Dashboard / 4-Day Program / Hall Zones / Photo Booth)
+function showHomeSubView(sub) {
+  document.getElementById("home-dashboard").classList.toggle("hidden", sub !== "dashboard");
+  document.getElementById("home-program").classList.toggle("hidden", sub !== "program");
+  document.getElementById("home-zones").classList.toggle("hidden", sub !== "zones");
+  document.getElementById("home-booth").classList.toggle("hidden", sub !== "booth");
 }
 
-document.getElementById("btn-open-program").addEventListener("click", () => showExploreSubView("program"));
-document.getElementById("btn-open-zones").addEventListener("click", () => showExploreSubView("zones"));
-document.getElementById("btn-back-from-program").addEventListener("click", () => showExploreSubView("home"));
-document.getElementById("btn-back-from-zones").addEventListener("click", () => showExploreSubView("home"));
+document.getElementById("btn-open-program").addEventListener("click", () => showHomeSubView("program"));
+document.getElementById("btn-open-zones").addEventListener("click", () => showHomeSubView("zones"));
+document.getElementById("btn-open-booth").addEventListener("click", () => showHomeSubView("booth"));
+
+document.getElementById("btn-back-from-program").addEventListener("click", () => showHomeSubView("dashboard"));
+document.getElementById("btn-back-from-zones").addEventListener("click", () => showHomeSubView("dashboard"));
+document.getElementById("btn-back-from-booth").addEventListener("click", () => showHomeSubView("dashboard"));
 
 function getDaySessions(dayNum) {
   return OFFICIAL_PROGRAM.filter(ev => ev.day === dayNum);
@@ -1203,7 +1258,7 @@ document.querySelectorAll(".gate-option").forEach(btn => {
   });
 });
 
-// Initialize Everything
+// Initialize
 applyTheme(isDarkMode);
 renderZonesAndPassport();
 updateScheduleUI();

@@ -185,17 +185,22 @@
     </button>
   </aside>
 
-  <!-- FLOATING TOP BAR -->
+  <!-- CLEAN TOP HEADER: STACKED BRAND + ID ON LEFT, GATE & THEME ON RIGHT -->
   <header class="top-nav">
-    <div class="wordmark">KAFART<span class="dot">.</span>6</div>
+    <div class="brand-stack">
+      <div class="wordmark">KAFART<span class="dot">.</span>6</div>
+      <span id="device-id-badge" class="sub-device-id">KAF6-0000</span>
+    </div>
 
     <div class="top-right-group">
-      <span id="device-id-badge" class="device-chip" title="YOUR VISITOR PASS ID">KAF6-0000</span>
-
       <button id="btn-gate" class="pill-sand" aria-label="SELECT ENTRY GATE">
         <svg class="icon-xs" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
         <span id="gate-label">MAIN</span>
         <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+
+      <button id="btn-replay-tour" class="circle-sand" aria-label="OPEN APP TOUR">
+        <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       </button>
 
       <button id="btn-theme" class="circle-theme" aria-label="TOGGLE DARK MODE">
@@ -204,6 +209,38 @@
       </button>
     </div>
   </header>
+
+  <!-- FIRST-OPEN QUICK TOUR OVERLAY (WITH SKIP OPTION) -->
+  <div id="tour-overlay" class="tour-backdrop hidden" role="dialog" aria-modal="true" aria-label="WELCOME TOUR">
+    <div class="tour-card">
+      <div class="tour-top-row">
+        <span id="tour-step-pill" class="tag-pill-lime">STEP 1 OF 3</span>
+        <button id="btn-tour-skip" class="tour-skip-btn">SKIP TOUR</button>
+      </div>
+
+      <div id="tour-icon-box" class="tour-vector-badge">
+        <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
+      </div>
+
+      <h2 id="tour-title" class="display-zone-title">LIVE HALL WAYFINDING</h2>
+      <p id="tour-desc" class="tour-copy">
+        CHOOSE YOUR ENTRY GATE AT THE TOP RIGHT, THEN TAP ANY GALLERY WING OR SESSION TO WATCH FOOTSTEPS WALK YOU THERE IN 2D OR 3D.
+      </p>
+
+      <div class="tour-dots">
+        <span class="t-dot active" data-dot="0"></span>
+        <span class="t-dot" data-dot="1"></span>
+        <span class="t-dot" data-dot="2"></span>
+      </div>
+
+      <div class="tour-actions">
+        <button id="btn-tour-next" class="btn-lime-action">
+          <span id="tour-next-label">NEXT</span>
+          <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- IN-DEPTH EVENT DETAILS MODAL -->
   <div id="event-detail-modal" class="inspector-backdrop hidden">
@@ -345,7 +382,7 @@
     </div>
   </div>
 
-  <!-- COHESIVE 3-TAB SLIDE-DOWN BOTTOM DRAWER -->
+  <!-- UNCLUTTERED 2-TAB SLIDE-DOWN BOTTOM DRAWER -->
   <section id="bottom-sheet" class="bottom-sheet">
     <button id="btn-toggle-sheet" class="sheet-handle-btn" aria-label="SLIDE DOWN OR EXPAND GUIDE">
       <span class="grab-handle"></span>
@@ -355,17 +392,16 @@
       </span>
     </button>
 
-    <!-- 3 STREAMLINED PRIMARY TABS -->
-    <nav class="primary-tabs" aria-label="MAIN SECTIONS">
-      <button class="main-tab pill-lime active" data-tab="explore">EXPLORE</button>
-      <button class="main-tab pill-orange" data-tab="booth">BOOTH (<span id="unlocked-frame-count">6</span>/10)</button>
+    <!-- ONLY 2 CLEAN PRIMARY TABS -->
+    <nav class="primary-tabs-2" aria-label="MAIN SECTIONS">
+      <button class="main-tab pill-lime active" data-tab="home">HOME</button>
       <button class="main-tab pill-pink" data-tab="wall">WALL &amp; PASS (<span id="stamp-count">0</span>/4)</button>
     </nav>
 
-    <!-- ================= TAB 1: EXPLORE (LIVE + PROGRAM + ZONES) ================= -->
-    <div id="tab-explore" class="sheet-view active">
-      <!-- Sub-View A: Live Hero + Quick Directory Launchers -->
-      <div id="explore-home">
+    <!-- ================= TAB 1: HOME (LIVE + PROGRAM + ZONES + PHOTO BOOTH) ================= -->
+    <div id="tab-home" class="sheet-view active">
+      <!-- Sub-View A: Home Dashboard -->
+      <div id="home-dashboard">
         <article class="vibe-card">
           <div class="vibe-left">
             <div class="live-timer-badge">
@@ -391,25 +427,32 @@
           </div>
         </article>
 
-        <!-- Clean 2-Card Launcher for 4-Day Program & Hall Zones -->
-        <div class="launcher-grid">
-          <button id="btn-open-program" class="launcher-card">
-            <span class="launcher-eyebrow">NOV 19 – 22</span>
-            <strong>4-DAY PROGRAM</strong>
-            <span class="launcher-arrow">OPEN TIMETABLE →</span>
+        <!-- Clean 3-Tile Home Hub: Program, Zones, and Photo Booth -->
+        <div class="hub-grid-3">
+          <button id="btn-open-program" class="hub-tile">
+            <span class="hub-eyebrow">NOV 19–22</span>
+            <strong>PROGRAM</strong>
+            <span class="hub-sub">4 DAYS →</span>
           </button>
-          <button id="btn-open-zones" class="launcher-card">
-            <span class="launcher-eyebrow">9 HALL WINGS</span>
-            <strong>HALL ZONES</strong>
-            <span class="launcher-arrow">BROWSE WINGS →</span>
+
+          <button id="btn-open-zones" class="hub-tile">
+            <span class="hub-eyebrow">9 WINGS</span>
+            <strong>ZONES</strong>
+            <span class="hub-sub">EXPLORE →</span>
+          </button>
+
+          <button id="btn-open-booth" class="hub-tile tile-orange">
+            <span class="hub-eyebrow"><span id="unlocked-frame-count">6</span>/10 FRAMES</span>
+            <strong>BOOTH</strong>
+            <span class="hub-sub">SNAP →</span>
           </button>
         </div>
       </div>
 
       <!-- Sub-View B: 4-Day Official Program -->
-      <div id="explore-program" class="hidden">
+      <div id="home-program" class="hidden">
         <div class="subview-header">
-          <button id="btn-back-from-program" class="back-pill">← BACK</button>
+          <button id="btn-back-from-program" class="back-pill">← HOME</button>
           <span class="subview-title">OFFICIAL PROGRAM</span>
           <button id="btn-next-session" class="mini-pill-btn">NEXT →</button>
         </div>
@@ -425,64 +468,63 @@
       </div>
 
       <!-- Sub-View C: Hall Zones Directory -->
-      <div id="explore-zones" class="hidden">
+      <div id="home-zones" class="hidden">
         <div class="subview-header">
-          <button id="btn-back-from-zones" class="back-pill">← BACK</button>
+          <button id="btn-back-from-zones" class="back-pill">← HOME</button>
           <span class="subview-title">ALL HALL ZONES</span>
           <span></span>
         </div>
         <div id="zone-list" class="zone-directory-grid"></div>
       </div>
-    </div>
 
-    <!-- ================= TAB 2: PROCEDURAL PHOTO BOOTH & CAPTIONS ================= -->
-    <div id="tab-booth" class="sheet-view">
-      <div class="booth-layout">
-        <!-- Live Canvas Preview -->
-        <div class="booth-preview-box">
-          <canvas id="booth-canvas" width="540" height="675"></canvas>
-          <video id="camera-video" playsinline autoplay muted class="hidden"></video>
-          <span id="hd-badge" class="hd-pill hidden">HD 2160×2700</span>
+      <!-- Sub-View D: Photo Booth Studio (Lives Inside Home!) -->
+      <div id="home-booth" class="hidden">
+        <div class="subview-header">
+          <button id="btn-back-from-booth" class="back-pill">← HOME</button>
+          <span class="subview-title">FRAME STUDIO</span>
+          <button id="btn-open-qr-unlock" class="mini-pill-btn accent-orange">+ QR CODE</button>
         </div>
 
-        <!-- Camera / Upload & Frame Controls -->
-        <div class="booth-controls">
-          <div class="booth-source-row">
-            <button id="btn-start-camera" class="mini-pill-btn">LIVE CAMERA</button>
-            <button id="btn-snap-photo" class="mini-pill-btn hidden">CAPTURE</button>
-            <label class="mini-pill-btn file-label">
-              UPLOAD PHOTO
-              <input id="input-upload-photo" type="file" accept="image/*" class="hidden" />
-            </label>
-            <button id="btn-open-qr-unlock" class="mini-pill-btn accent-orange">+ QR CODE</button>
+        <div class="booth-layout">
+          <div class="booth-preview-box">
+            <canvas id="booth-canvas" width="540" height="675"></canvas>
+            <video id="camera-video" playsinline autoplay muted class="hidden"></video>
+            <span id="hd-badge" class="hd-pill hidden">HD 2160×2700</span>
           </div>
 
-          <!-- Horizontal 10-Frame Selector (6 Open + 4 Secret QR) -->
-          <div class="section-micro-label">SELECT FRAME (6 OPEN + 4 QR SECRET)</div>
-          <div id="frame-strip" class="frame-strip"></div>
-
-          <!-- Primary Export & Wall Share Actions -->
-          <div class="booth-action-row">
-            <button id="btn-download-frame" class="btn-forest-pill">SAVE TO PHONE</button>
-            <button id="btn-pin-to-wall" class="btn-lime-pill">PIN TO WALL →</button>
-          </div>
-          <p id="booth-status-msg" class="micro-status"></p>
-
-          <!-- Ready-to-Copy Hashtag Captions -->
-          <div class="captions-box">
-            <div class="captions-head">
-              <span>READY CAPTIONS &amp; HASHTAGS</span>
-              <button id="btn-shuffle-captions" class="text-link-btn">SHUFFLE</button>
+          <div class="booth-controls">
+            <div class="booth-source-row">
+              <button id="btn-start-camera" class="mini-pill-btn">LIVE CAMERA</button>
+              <button id="btn-snap-photo" class="mini-pill-btn hidden">CAPTURE</button>
+              <label class="mini-pill-btn file-label">
+                UPLOAD PHOTO
+                <input id="input-upload-photo" type="file" accept="image/*" class="hidden" />
+              </label>
             </div>
-            <div id="caption-list" class="caption-list"></div>
+
+            <div class="section-micro-label">SELECT FRAME (6 OPEN + 4 QR SECRET)</div>
+            <div id="frame-strip" class="frame-strip"></div>
+
+            <div class="booth-action-row">
+              <button id="btn-download-frame" class="btn-forest-pill">SAVE TO PHONE</button>
+              <button id="btn-pin-to-wall" class="btn-lime-pill">PIN TO WALL →</button>
+            </div>
+            <p id="booth-status-msg" class="micro-status"></p>
+
+            <div class="captions-box">
+              <div class="captions-head">
+                <span>READY CAPTIONS &amp; HASHTAGS</span>
+                <button id="btn-shuffle-captions" class="text-link-btn">SHUFFLE</button>
+              </div>
+              <div id="caption-list" class="caption-list"></div>
+            </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- ================= TAB 3: DIGITAL PRINT SWAP WALL & PASSPORT ================= -->
+    <!-- ================= TAB 2: DIGITAL PRINT SWAP WALL & PASSPORT ================= -->
     <div id="tab-wall" class="sheet-view">
-      <!-- Compact 4-Zone Biennale Passport Strip -->
       <div class="passport-bar">
         <div class="passport-bar-top">
           <span>BIENNALE PASSPORT STAMPS</span>
@@ -491,11 +533,10 @@
         <div id="passport-grid" class="passport-pills-row"></div>
       </div>
 
-      <!-- Shared Digital Print Swap Wall -->
       <div class="wall-header">
         <div>
           <strong>DIGITAL PRINT SWAP WALL</strong>
-          <span>CONTRIBUTE 1 PRINT TO SWAP &amp; COLLECT OTHERS</span>
+          <span>PIN 1 PRINT FROM HOME → BOOTH TO SWAP OTHERS</span>
         </div>
         <button id="btn-refresh-wall" class="mini-pill-btn">REFRESH</button>
       </div>
