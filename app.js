@@ -1,31 +1,62 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { HALL_ZONES, ENTRY_GATES, FESTIVAL_DAYS, OFFICIAL_PROGRAM } from "./schedule.js";
+import {
+  SUPABASE_CONFIG,
+  HALL_ZONES,
+  ENTRY_GATES,
+  BOOTH_FRAMES,
+  SHARE_CAPTIONS,
+  FESTIVAL_DAYS,
+  OFFICIAL_PROGRAM
+} from "./schedule.js";
+
+// =========================================================
+// 0. AUTOMATIC ZERO-LOGIN DEVICE IDENTITY (KAF6-XXXX)
+// =========================================================
+function getOrCreateDeviceId() {
+  let id = localStorage.getItem("kafart6_device_id");
+  if (!id) {
+    const num = Math.floor(1000 + Math.random() * 9000);
+    const letter = String.fromCharCode(65 + Math.floor(Math.random() * 26));
+    id = `KAF6-${num}-${letter}`;
+    localStorage.setItem("kafart6_device_id", id);
+    document.cookie = `kafart6_id=${id}; max-age=31536000; path=/`;
+  }
+  return id;
+}
+
+const DEVICE_ID = getOrCreateDeviceId();
+document.getElementById("device-id-badge").textContent = DEVICE_ID;
 
 const urlParams = new URLSearchParams(window.location.search);
 let currentGateKey = ENTRY_GATES[urlParams.get("gate")] ? urlParams.get("gate") : "gate_main";
 let viewMode = "2d";
 let isDarkMode = localStorage.getItem("kafart6_theme") === "dark";
 let selectedDay = 1;
-let demoStepIndex = 0; // Steps through the selected day's sessions cleanly
+let demoStepIndex = 0;
 let selectedZoneId = null;
 let selectedEventId = null;
 let stampedZones = JSON.parse(localStorage.getItem("kafart6_stamps") || "[]");
+let unlockedCodes = JSON.parse(localStorage.getItem("kafart6_qr_unlocks") || "[]");
+let swappedPrintIds = JSON.parse(localStorage.getItem("kafart6_swapped_prints") || "[]");
 
-// Auto-detect if today is Nov 19–22, 2026
+// Check URL for QR secret unlock parameter (e.g. ?unlock=curator)
+const urlUnlock = (urlParams.get("unlock") || "").trim().toUpperCase();
+if (urlUnlock && !unlockedCodes.includes(urlUnlock)) {
+  unlockedCodes.push(urlUnlock);
+  localStorage.setItem("kafart6_qr_unlocks", JSON.stringify(unlockedCodes));
+}
+
 function detectFestivalDay() {
   const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  const todayStr = `${y}-${m}-${d}`;
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const found = Object.entries(FESTIVAL_DAYS).find(([, info]) => info.isoDate === todayStr);
   return found ? Number(found[0]) : 1;
 }
 selectedDay = detectFestivalDay();
 
 // =========================================================
-// 1. SLIDE-DOWN / HIDE NAVIGATION DRAWER (TAP OR SWIPE)
+// 1. SLIDE-DOWN / HIDE NAVIGATION DRAWER
 // =========================================================
 const bottomSheet = document.getElementById("bottom-sheet");
 const sheetToggleBtn = document.getElementById("btn-toggle-sheet");
@@ -34,14 +65,13 @@ const sheetHintText = document.querySelector("#sheet-toggle-hint span");
 function setSheetCollapsed(collapsed) {
   bottomSheet.classList.toggle("collapsed", collapsed);
   document.body.classList.toggle("sheet-hidden", collapsed);
-  sheetHintText.textContent = collapsed ? "Show Guide" : "Hide Guide";
+  sheetHintText.textContent = collapsed ? "SHOW GUIDE" : "HIDE GUIDE";
 }
 
 sheetToggleBtn.addEventListener("click", () => {
   setSheetCollapsed(!bottomSheet.classList.contains("collapsed"));
 });
 
-// Touch swipe down to hide / swipe up to reveal
 let sheetTouchStartY = 0;
 sheetToggleBtn.addEventListener("touchstart", e => {
   sheetTouchStartY = e.touches[0].clientY;
@@ -113,8 +143,7 @@ mapViewport2d.addEventListener("pointermove", e => {
     const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
 
     if (lastPinchDist) {
-      const zoomFactor = dist / lastPinchDist;
-      mapTransform.scale = Math.min(3.2, Math.max(0.75, mapTransform.scale * zoomFactor));
+      mapTransform.scale = Math.min(3.2, Math.max(0.75, mapTransform.scale * (dist / lastPinchDist)));
     }
     if (lastPanMid) {
       mapTransform.x += (mid.x - lastPanMid.x) * unitRatio;
@@ -143,8 +172,7 @@ mapViewport2d.addEventListener("pointercancel", clearPointer);
 
 mapViewport2d.addEventListener("wheel", e => {
   e.preventDefault();
-  const factor = e.deltaY < 0 ? 1.12 : 0.9;
-  mapTransform.scale = Math.min(3.2, Math.max(0.75, mapTransform.scale * factor));
+  mapTransform.scale = Math.min(3.2, Math.max(0.75, mapTransform.scale * (e.deltaY < 0 ? 1.12 : 0.9)));
   applyMapTransform();
 }, { passive: false });
 
@@ -159,11 +187,10 @@ const targetRingSvg = document.getElementById("svg-target-ring");
 function buildCorridorWaypoints(startSvg, endSvg) {
   const pts = [startSvg];
   if (Math.hypot(startSvg.x - endSvg.x, startSvg.y - endSvg.y) > 22) {
-    const entryHub = {
+    pts.push({
       x: Math.sign(startSvg.x) * Math.min(Math.abs(startSvg.x), 26),
       y: Math.sign(startSvg.y) * Math.min(Math.abs(startSvg.y), 26)
-    };
-    pts.push(entryHub);
+    });
     pts.push({ x: 0, y: 8 });
   }
   pts.push(endSvg);
@@ -203,17 +230,13 @@ function drawWalkingFootsteps(targetZoneId) {
     const dy = b.y - a.y;
     const segLen = Math.hypot(dx, dy);
     const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
-    const stepSpacing = 3.4;
-    const stepsCount = Math.max(1, Math.floor(segLen / stepSpacing));
-
+    const stepsCount = Math.max(1, Math.floor(segLen / 3.4));
     const nx = -dy / (segLen || 1);
     const ny = dx / (segLen || 1);
 
     for (let s = 1; s <= stepsCount; s++) {
       const t = s / (stepsCount + 0.5);
-      const isLeft = stepIndex % 2 === 0;
-      const sideOffset = isLeft ? -0.95 : 0.95;
-
+      const sideOffset = stepIndex % 2 === 0 ? -0.95 : 0.95;
       const fx = a.x + dx * t + nx * sideOffset;
       const fy = a.y + dy * t + ny * sideOffset;
 
@@ -242,7 +265,7 @@ document.querySelectorAll(".zone-group").forEach(g => {
 });
 
 // =========================================================
-// 4. 3D ARCHITECTURAL MAQUETTE (THREE.JS)
+// 4. 3D ARCHITECTURAL MAQUETTE
 // =========================================================
 const container3d = document.getElementById("canvas-container");
 const scene = new THREE.Scene();
@@ -255,7 +278,6 @@ camera.position.set(0, 76, 66);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
 container3d.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -272,20 +294,17 @@ let isFlying = false;
 scene.add(new THREE.AmbientLight(0xffffff, 1.1));
 const sunLight = new THREE.DirectionalLight(0xfff5e4, 1.15);
 sunLight.position.set(35, 70, 45);
-sunLight.castShadow = true;
 scene.add(sunLight);
 
 let floorMat, wallMat, seatingMat;
 
 function buildHallArchitecture() {
   const hallGroup = new THREE.Group();
-
   const floorGeo = new THREE.CylinderGeometry(46, 46, 1.2, 8);
   floorGeo.rotateY(Math.PI / 8);
   floorMat = new THREE.MeshStandardMaterial({ color: 0xe6e1d3, roughness: 0.9 });
   const floor = new THREE.Mesh(floorGeo, floorMat);
   floor.position.y = -0.6;
-  floor.receiveShadow = true;
   hallGroup.add(floor);
 
   const ringGeo = new THREE.RingGeometry(44.6, 46.2, 8);
@@ -373,20 +392,18 @@ let pathLine3d = null;
 
 function updateRouteEverywhere(targetZoneId) {
   drawWalkingFootsteps(targetZoneId);
-
   const gate = ENTRY_GATES[currentGateKey];
   userPin3d.position.set(gate.pos.x, 2.4, gate.pos.z);
 
   if (pathLine3d) scene.remove(pathLine3d);
   if (targetZoneId && HALL_ZONES[targetZoneId]) {
     const dest = HALL_ZONES[targetZoneId].pos;
-    const points = [
-      new THREE.Vector3(gate.pos.x, 0.7, gate.pos.z),
-      new THREE.Vector3(0, 0.7, 5),
-      new THREE.Vector3(dest.x, 0.7, dest.z)
-    ];
     pathLine3d = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(points),
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(gate.pos.x, 0.7, gate.pos.z),
+        new THREE.Vector3(0, 0.7, 5),
+        new THREE.Vector3(dest.x, 0.7, dest.z)
+      ]),
       new THREE.LineBasicMaterial({ color: isDarkMode ? 0xd8ee52 : 0x113c2b })
     );
     scene.add(pathLine3d);
@@ -419,17 +436,480 @@ renderer.domElement.addEventListener("pointerdown", e => {
 renderer.domElement.addEventListener("pointerup", e => {
   if (viewMode !== "3d") return;
   if (Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 8) return;
-
   pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
   pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
   raycaster.setFromCamera(pointer, camera);
-
   const hits = raycaster.intersectObjects(Object.values(zoneMeshes));
   if (hits.length > 0) openZoneInspector(hits[0].object.userData.zoneId);
 });
 
 // =========================================================
-// 5. DARK MODE & VIEW SWITCHER
+// 5. 100% PROCEDURAL 10-FRAME PHOTO BOOTH STUDIO (WITH 1 HD)
+// =========================================================
+const boothCanvas = document.getElementById("booth-canvas");
+const boothCtx = boothCanvas.getContext("2d");
+const cameraVideo = document.getElementById("camera-video");
+
+let selectedFrameId = "f1";
+let userPhotoImg = null;
+let cameraStream = null;
+
+function isFrameUnlocked(frame) {
+  return !frame.secretCode || unlockedCodes.includes(frame.secretCode);
+}
+
+// Procedural Canvas Renderer — Draws 10 Unique Architectural/Cultural Frames from Scratch
+function renderFramedArtwork(targetCanvas, frameId, sourceImage) {
+  const ctx = targetCanvas.getContext("2d");
+  const w = targetCanvas.width;
+  const h = targetCanvas.height;
+  const pad = Math.round(w * 0.065);
+  const bottomBar = Math.round(h * 0.14);
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Frame Palette & Theme Setup
+  const themes = {
+    f1: { bg: "#FAF7F0", border: "#113C2B", accent: "#F3842B", text: "#141413", title: "TO HAVE & TO HOLD" },
+    f2: { bg: "#113C2B", border: "#D8EE52", accent: "#F3842B", text: "#D8EE52", title: "SAHELIAN LOOM • KADUNA" },
+    f3: { bg: "#D8EE52", border: "#141413", accent: "#113C2B", text: "#141413", title: "ALL-ACCESS RUNWAY PASS" },
+    f4: { bg: "#F3842B", border: "#FAF7F0", accent: "#113C2B", text: "#FAF7F0", title: "INDIGO & CLAY GUILD" },
+    f5: { bg: "#EFECE3", border: "#141413", accent: "#F3B2D0", text: "#141413", title: "KAFART BIENNALE 2026" },
+    f6: { bg: "#113C2B", border: "#F3842B", accent: "#D8EE52", text: "#FAF7F0", title: "COLLECTOR'S DOUBLE ORB" },
+    f7: { bg: "#1A2421", border: "#D8EE52", accent: "#F3842B", text: "#D8EE52", title: "SECRET 07 • LOOM MASTER" },
+    f8: { bg: "#5A2A1B", border: "#F3842B", accent: "#D8EE52", text: "#FAF7F0", title: "SECRET 08 • NOK TERRACOTTA" },
+    f9: { bg: "#0E1E38", border: "#F3B2D0", accent: "#D8EE52", text: "#FAF7F0", title: "SECRET 09 • ZARIA INDIGO" },
+    f10: { bg: "#141413", border: "#D8EE52", accent: "#F3842B", text: "#D8EE52", title: "CURATOR'S GOLD • HD EDITION" }
+  };
+
+  const t = themes[frameId] || themes.f1;
+  ctx.fillStyle = t.bg;
+  ctx.fillRect(0, 0, w, h);
+
+  // Photo Viewport Coordinates
+  const px = pad;
+  const py = pad;
+  const pw = w - pad * 2;
+  const ph = h - pad - bottomBar;
+
+  // Draw Photo or Stylized Placeholder Artwork
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(px, py, pw, ph, Math.round(w * 0.025));
+  ctx.clip();
+
+  if (sourceImage) {
+    const imgRatio = sourceImage.width / sourceImage.height;
+    const boxRatio = pw / ph;
+    let drawW = pw, drawH = ph, offX = px, offY = py;
+    if (imgRatio > boxRatio) {
+      drawW = ph * imgRatio;
+      offX = px - (drawW - pw) / 2;
+    } else {
+      drawH = pw / imgRatio;
+      offY = py - (drawH - ph) / 2;
+    }
+    ctx.drawImage(sourceImage, offX, offY, drawW, drawH);
+  } else {
+    // Procedural Geometric Art Poster Placeholder
+    ctx.fillStyle = "#1E262C";
+    ctx.fillRect(px, py, pw, ph);
+    ctx.fillStyle = t.accent;
+    ctx.beginPath();
+    ctx.arc(px + pw * 0.38, py + ph * 0.46, pw * 0.24, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = t.border;
+    ctx.beginPath();
+    ctx.arc(px + pw * 0.62, py + ph * 0.46, pw * 0.24, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#FAF7F0";
+    ctx.font = `800 ${Math.round(w * 0.036)}px "Plus Jakarta Sans", sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillText("TAP CAMERA OR UPLOAD", w / 2, py + ph * 0.78);
+  }
+  ctx.restore();
+
+  // Procedural Decorative Geometry Unique to Frame Type
+  ctx.strokeStyle = t.border;
+  ctx.lineWidth = Math.max(3, Math.round(w * 0.007));
+  ctx.strokeRect(px, py, pw, ph);
+
+  // Geometric Woven Strip Accent on Side Borders for Loom / Secret Frames
+  if (["f2", "f7", "f9", "f10"].includes(frameId)) {
+    ctx.fillStyle = t.accent;
+    const step = Math.round(h * 0.045);
+    for (let y = pad; y < h - bottomBar; y += step) {
+      ctx.fillRect(Math.round(pad * 0.28), y, Math.round(pad * 0.42), Math.round(step * 0.45));
+      ctx.fillRect(w - Math.round(pad * 0.7), y + Math.round(step * 0.22), Math.round(pad * 0.42), Math.round(step * 0.45));
+    }
+  }
+
+  // Double Orb Motif for Frame 6 & 10
+  if (frameId === "f6" || frameId === "f10") {
+    ctx.fillStyle = t.accent;
+    ctx.beginPath();
+    ctx.arc(w - pad - Math.round(w * 0.09), h - Math.round(bottomBar * 0.5), Math.round(w * 0.042), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = t.border;
+    ctx.beginPath();
+    ctx.arc(w - pad - Math.round(w * 0.045), h - Math.round(bottomBar * 0.5), Math.round(w * 0.042), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Bottom Typography Masthead
+  ctx.fillStyle = t.text;
+  ctx.textAlign = "left";
+  ctx.font = `800 ${Math.round(w * 0.042)}px "Syne", sans-serif`;
+  ctx.fillText("KAFART 6 • KADUNA", pad, h - Math.round(bottomBar * 0.54));
+
+  ctx.font = `700 ${Math.round(w * 0.026)}px "Plus Jakarta Sans", sans-serif`;
+  ctx.fillText(`${t.title} • ${DEVICE_ID}`, pad, h - Math.round(bottomBar * 0.24));
+}
+
+function updateBoothPreview() {
+  renderFramedArtwork(boothCanvas, selectedFrameId, userPhotoImg);
+  const frameObj = BOOTH_FRAMES.find(f => f.id === selectedFrameId);
+  document.getElementById("hd-badge").classList.toggle("hidden", !(frameObj && frameObj.isHD));
+}
+
+function renderFrameSelector() {
+  const unlockedCount = BOOTH_FRAMES.filter(isFrameUnlocked).length;
+  document.getElementById("unlocked-frame-count").textContent = unlockedCount;
+
+  const strip = document.getElementById("frame-strip");
+  strip.innerHTML = BOOTH_FRAMES.map(f => {
+    const unlocked = isFrameUnlocked(f);
+    const active = f.id === selectedFrameId;
+    return `
+      <button class="frame-chip ${active ? "active" : ""} ${unlocked ? "" : "locked"}" data-frame="${f.id}">
+        <strong>${unlocked ? f.name : "LOCKED QR"}</strong>
+        <span>${f.tag}</span>
+      </button>
+    `;
+  }).join("");
+
+  strip.querySelectorAll(".frame-chip").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const f = BOOTH_FRAMES.find(item => item.id === btn.dataset.frame);
+      if (!f) return;
+      if (!isFrameUnlocked(f)) {
+        document.getElementById("qr-unlock-modal").classList.remove("hidden");
+        return;
+      }
+      selectedFrameId = f.id;
+      renderFrameSelector();
+      updateBoothPreview();
+    });
+  });
+}
+
+// Live Camera & Upload Controls
+document.getElementById("btn-start-camera").addEventListener("click", async () => {
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+    cameraVideo.srcObject = cameraStream;
+    cameraVideo.classList.remove("hidden");
+    boothCanvas.classList.add("hidden");
+    document.getElementById("btn-snap-photo").classList.remove("hidden");
+  } catch {
+    document.getElementById("booth-status-msg").textContent = "CAMERA UNAVAILABLE — USE UPLOAD PHOTO.";
+  }
+});
+
+document.getElementById("btn-snap-photo").addEventListener("click", () => {
+  const snapCanvas = document.createElement("canvas");
+  snapCanvas.width = cameraVideo.videoWidth || 720;
+  snapCanvas.height = cameraVideo.videoHeight || 900;
+  snapCanvas.getContext("2d").drawImage(cameraVideo, 0, 0, snapCanvas.width, snapCanvas.height);
+
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+  cameraVideo.classList.add("hidden");
+  boothCanvas.classList.remove("hidden");
+  document.getElementById("btn-snap-photo").classList.add("hidden");
+
+  const img = new Image();
+  img.onload = () => {
+    userPhotoImg = img;
+    updateBoothPreview();
+  };
+  img.src = snapCanvas.toDataURL("image/jpeg", 0.92);
+});
+
+document.getElementById("input-upload-photo").addEventListener("change", e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      userPhotoImg = img;
+      updateBoothPreview();
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+// Download Print (Full 2160x2700 HD for Frame 10, 1080x1350 Standard for 1-9)
+document.getElementById("btn-download-frame").addEventListener("click", () => {
+  const frameObj = BOOTH_FRAMES.find(f => f.id === selectedFrameId);
+  const exportCanvas = document.createElement("canvas");
+  exportCanvas.width = frameObj && frameObj.isHD ? 2160 : 1080;
+  exportCanvas.height = frameObj && frameObj.isHD ? 2700 : 1350;
+
+  renderFramedArtwork(exportCanvas, selectedFrameId, userPhotoImg);
+
+  const link = document.createElement("a");
+  link.download = `KAFART6-${frameObj.id.toUpperCase()}-${DEVICE_ID}.jpg`;
+  link.href = exportCanvas.toDataURL("image/jpeg", frameObj && frameObj.isHD ? 0.95 : 0.85);
+  link.click();
+
+  document.getElementById("booth-status-msg").textContent =
+    frameObj && frameObj.isHD ? "SAVED IN FULL HD (2160×2700)!" : "SAVED TO YOUR PHONE!";
+});
+
+// QR Secret Unlock Modal
+document.getElementById("btn-open-qr-unlock").addEventListener("click", () => {
+  document.getElementById("qr-unlock-modal").classList.remove("hidden");
+});
+document.getElementById("btn-close-qr-modal").addEventListener("click", () => {
+  document.getElementById("qr-unlock-modal").classList.add("hidden");
+});
+document.getElementById("btn-submit-qr-code").addEventListener("click", () => {
+  const code = document.getElementById("qr-code-input").value.trim().toUpperCase();
+  const match = BOOTH_FRAMES.find(f => f.secretCode === code);
+  const msgEl = document.getElementById("qr-feedback-msg");
+
+  if (!match) {
+    msgEl.textContent = "INVALID CODE. TRY LOOM, NOK, INDIGO, OR CURATOR.";
+    return;
+  }
+  if (!unlockedCodes.includes(code)) {
+    unlockedCodes.push(code);
+    localStorage.setItem("kafart6_qr_unlocks", JSON.stringify(unlockedCodes));
+  }
+  selectedFrameId = match.id;
+  renderFrameSelector();
+  updateBoothPreview();
+  msgEl.textContent = `UNLOCKED: ${match.name}!`;
+});
+
+// Copyable Hashtag Captions
+function renderCaptions() {
+  const list = document.getElementById("caption-list");
+  list.innerHTML = SHARE_CAPTIONS.map((cap, idx) => `
+    <div class="caption-item">
+      <p>${cap}</p>
+      <button class="copy-cap-btn" data-cap-idx="${idx}">COPY</button>
+    </div>
+  `).join("");
+
+  list.querySelectorAll(".copy-cap-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const text = SHARE_CAPTIONS[Number(btn.dataset.capIdx)];
+      try {
+        await navigator.clipboard.writeText(text);
+        btn.textContent = "COPIED";
+        setTimeout(() => { btn.textContent = "COPY"; }, 1800);
+      } catch {
+        btn.textContent = "READY";
+      }
+    });
+  });
+}
+
+document.getElementById("btn-shuffle-captions").addEventListener("click", () => {
+  SHARE_CAPTIONS.push(SHARE_CAPTIONS.shift());
+  renderCaptions();
+});
+
+// =========================================================
+// 6. DIGITAL PRINT SWAP WALL (SUPABASE + LOCAL FALLBACK)
+// =========================================================
+function buildSeededArchivalPrints() {
+  const seeds = [
+    { id: "seed_1", device_id: "KAFART-2019", frame_name: "ARCHIVE EDITION", zone: "EXHIBITION 3", fId: "f1" },
+    { id: "seed_2", device_id: "KAFART-2022", frame_name: "SAHELIAN LOOM", zone: "FASHION WING", fId: "f2" },
+    { id: "seed_3", device_id: "KAFART-2024", frame_name: "INDIGO & CLAY", zone: "EXHIBITION 4", fId: "f4" },
+    { id: "seed_4", device_id: "KAF6-HOST", frame_name: "CURATOR GOLD", zone: "MAIN STAGE", fId: "f10" }
+  ];
+
+  return seeds.map(s => {
+    const c = document.createElement("canvas");
+    c.width = 400;
+    c.height = 500;
+    renderFramedArtwork(c, s.fId, null);
+    return {
+      id: s.id,
+      device_id: s.device_id,
+      frame_name: s.frame_name,
+      zone: s.zone,
+      thumb_url: c.toDataURL("image/jpeg", 0.72)
+    };
+  });
+}
+
+let wallPrints = JSON.parse(localStorage.getItem("kafart6_wall_prints") || "null") || buildSeededArchivalPrints();
+
+async function pinCurrentPhotoToWall() {
+  const statusEl = document.getElementById("booth-status-msg");
+  statusEl.textContent = "COMPRESSING & PINNING TO WALL...";
+
+  // Lightweight 400x500 thumbnail (~40KB) to conserve Supabase free tier
+  const thumbCanvas = document.createElement("canvas");
+  thumbCanvas.width = 400;
+  thumbCanvas.height = 500;
+  renderFramedArtwork(thumbCanvas, selectedFrameId, userPhotoImg);
+  const thumbDataUrl = thumbCanvas.toDataURL("image/jpeg", 0.75);
+
+  const frameObj = BOOTH_FRAMES.find(f => f.id === selectedFrameId);
+  const activeZone = selectedZoneId ? HALL_ZONES[selectedZoneId].name : "HALL FLOOR";
+
+  const newEntry = {
+    id: `print_${Date.now()}`,
+    device_id: DEVICE_ID,
+    frame_name: frameObj ? frameObj.name : "KAFART 6",
+    zone: activeZone,
+    thumb_url: thumbDataUrl
+  };
+
+  // Optional Supabase Cloud Bucket Upload when keys are configured
+  if (SUPABASE_CONFIG.url && SUPABASE_CONFIG.anonKey) {
+    try {
+      const blob = await (await fetch(thumbDataUrl)).blob();
+      const filePath = `${DEVICE_ID}/${Date.now()}.jpg`;
+      const uploadRes = await fetch(
+        `${SUPABASE_CONFIG.url}/storage/v1/object/${SUPABASE_CONFIG.bucket}/${filePath}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${SUPABASE_CONFIG.anonKey}`,
+            "Content-Type": "image/jpeg"
+          },
+          body: blob
+        }
+      );
+
+      if (uploadRes.ok) {
+        const publicUrl = `${SUPABASE_CONFIG.url}/storage/v1/object/public/${SUPABASE_CONFIG.bucket}/${filePath}`;
+        newEntry.thumb_url = publicUrl;
+        await fetch(`${SUPABASE_CONFIG.url}/rest/v1/${SUPABASE_CONFIG.table}`, {
+          method: "POST",
+          headers: {
+            apikey: SUPABASE_CONFIG.anonKey,
+            Authorization: `Bearer ${SUPABASE_CONFIG.anonKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            device_id: newEntry.device_id,
+            frame_name: newEntry.frame_name,
+            zone_name: newEntry.zone,
+            image_url: publicUrl
+          })
+        });
+      }
+    } catch {
+      // Falls back seamlessly to local wall storage
+    }
+  }
+
+  wallPrints.unshift(newEntry);
+  localStorage.setItem("kafart6_wall_prints", JSON.stringify(wallPrints.slice(0, 24)));
+  statusEl.textContent = "PINNED TO WALL! SWAP UNLOCKED.";
+  renderMemoryWall();
+  switchPrimaryTab("wall");
+}
+
+document.getElementById("btn-pin-to-wall").addEventListener("click", pinCurrentPhotoToWall);
+
+async function refreshWallFromCloud() {
+  if (SUPABASE_CONFIG.url && SUPABASE_CONFIG.anonKey) {
+    try {
+      const res = await fetch(
+        `${SUPABASE_CONFIG.url}/rest/v1/${SUPABASE_CONFIG.table}?select=*&order=created_at.desc&limit=16`,
+        {
+          headers: {
+            apikey: SUPABASE_CONFIG.anonKey,
+            Authorization: `Bearer ${SUPABASE_CONFIG.anonKey}`
+          }
+        }
+      );
+      if (res.ok) {
+        const rows = await res.json();
+        if (rows.length) {
+          wallPrints = rows.map(r => ({
+            id: String(r.id),
+            device_id: r.device_id,
+            frame_name: r.frame_name,
+            zone: r.zone_name,
+            thumb_url: r.image_url
+          }));
+        }
+      }
+    } catch {
+      // Keep local prints
+    }
+  }
+  renderMemoryWall();
+}
+
+document.getElementById("btn-refresh-wall").addEventListener("click", refreshWallFromCloud);
+
+function renderMemoryWall() {
+  const userHasContributed = wallPrints.some(p => p.device_id === DEVICE_ID);
+  const grid = document.getElementById("memory-wall-grid");
+
+  grid.innerHTML = wallPrints.map(p => {
+    const isMine = p.device_id === DEVICE_ID;
+    const isSwapped = swappedPrintIds.includes(p.id);
+    let btnText = "PIN 1 TO SWAP";
+    if (isMine) btnText = "YOUR PRINT";
+    else if (isSwapped) btnText = "SWAPPED ✓";
+    else if (userHasContributed) btnText = "SWAP PRINT";
+
+    return `
+      <article class="wall-card">
+        <img src="${p.thumb_url}" alt="${p.frame_name}" loading="lazy" />
+        <div class="wall-card-meta">
+          <div class="wall-card-top">
+            <span>${p.device_id}</span>
+            <span>${p.zone}</span>
+          </div>
+          <button class="swap-btn ${isSwapped || isMine ? "swapped" : ""}" data-swap-id="${p.id}">
+            ${btnText}
+          </button>
+        </div>
+      </article>
+    `;
+  }).join("");
+
+  grid.querySelectorAll(".swap-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const pId = btn.dataset.swapId;
+      const item = wallPrints.find(x => x.id === pId);
+      if (!item || item.device_id === DEVICE_ID) return;
+
+      if (!userHasContributed) {
+        switchPrimaryTab("booth");
+        document.getElementById("booth-status-msg").textContent = "PIN 1 PHOTO FIRST TO SWAP PRINTS!";
+        return;
+      }
+
+      if (!swappedPrintIds.includes(pId)) {
+        swappedPrintIds.push(pId);
+        localStorage.setItem("kafart6_swapped_prints", JSON.stringify(swappedPrintIds));
+        renderMemoryWall();
+      }
+    });
+  });
+}
+
+// =========================================================
+// 7. THEME, TABS, SCHEDULE & PASSPORT
 // =========================================================
 function applyTheme(dark) {
   isDarkMode = dark;
@@ -471,9 +951,29 @@ document.getElementById("btn-recenter").addEventListener("click", () => {
   else resetCamera3d();
 });
 
-// =========================================================
-// 6. OFFICIAL 4-DAY SCHEDULE ENGINE
-// =========================================================
+function switchPrimaryTab(tabName) {
+  setSheetCollapsed(false);
+  document.querySelectorAll(".main-tab, .sheet-view").forEach(el => el.classList.remove("active"));
+  document.querySelector(`.main-tab[data-tab="${tabName}"]`).classList.add("active");
+  document.getElementById(`tab-${tabName}`).classList.add("active");
+}
+
+document.querySelectorAll(".main-tab").forEach(btn => {
+  btn.addEventListener("click", () => switchPrimaryTab(btn.dataset.tab));
+});
+
+// Explore Sub-Views (Home / 4-Day Program / Hall Zones)
+function showExploreSubView(sub) {
+  document.getElementById("explore-home").classList.toggle("hidden", sub !== "home");
+  document.getElementById("explore-program").classList.toggle("hidden", sub !== "program");
+  document.getElementById("explore-zones").classList.toggle("hidden", sub !== "zones");
+}
+
+document.getElementById("btn-open-program").addEventListener("click", () => showExploreSubView("program"));
+document.getElementById("btn-open-zones").addEventListener("click", () => showExploreSubView("zones"));
+document.getElementById("btn-back-from-program").addEventListener("click", () => showExploreSubView("home"));
+document.getElementById("btn-back-from-zones").addEventListener("click", () => showExploreSubView("home"));
+
 function getDaySessions(dayNum) {
   return OFFICIAL_PROGRAM.filter(ev => ev.day === dayNum);
 }
@@ -481,18 +981,13 @@ function getDaySessions(dayNum) {
 function getCurrentFeaturedSession() {
   const daySessions = getDaySessions(selectedDay);
   const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  const todayStr = `${y}-${m}-${d}`;
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
-  // If today matches the selected festival day, match real clock time first
   if (FESTIVAL_DAYS[selectedDay].isoDate === todayStr) {
     const mins = now.getHours() * 60 + now.getMinutes();
     const liveMatch = daySessions.find(ev => mins >= ev.startMin && mins < ev.endMin);
     if (liveMatch) return liveMatch;
   }
-
   return daySessions[demoStepIndex % daySessions.length];
 }
 
@@ -504,7 +999,7 @@ function openEventDetails(eventId) {
   const z = HALL_ZONES[ev.zoneId];
   const dayInfo = FESTIVAL_DAYS[ev.day];
 
-  document.getElementById("ev-detail-badge").textContent = `${dayInfo.label.toUpperCase()} • ${dayInfo.dateLabel.toUpperCase()}`;
+  document.getElementById("ev-detail-badge").textContent = `${dayInfo.label} • ${dayInfo.dateLabel}`;
   document.getElementById("ev-detail-title").textContent = ev.title;
   document.getElementById("ev-detail-time").textContent = ev.timeLabel;
   document.getElementById("ev-detail-zone").textContent = `${z.name} • ${z.wing}`;
@@ -547,13 +1042,13 @@ function openZoneInspector(zoneId) {
   document.getElementById("toast-desc").textContent = `“${z.description}”`;
 
   const daySessions = getDaySessions(selectedDay).filter(ev => ev.zoneId === zoneId);
-  document.getElementById("toast-status-badge").textContent = `${FESTIVAL_DAYS[selectedDay].label}`;
+  document.getElementById("toast-status-badge").textContent = FESTIVAL_DAYS[selectedDay].label;
   document.getElementById("toast-event-box").textContent = daySessions.length
     ? daySessions.map(s => `${s.timeLabel}: ${s.title}`).join(" • ")
-    : "Open for continuous exhibition walkthrough & vendor browsing.";
+    : "OPEN FOR CONTINUOUS EXHIBITION WALKTHROUGH & VENDOR BROWSING.";
 
   const isStamped = stampedZones.includes(zoneId);
-  document.getElementById("checkin-label").textContent = isStamped ? "Stamped" : "Check In";
+  document.getElementById("checkin-label").textContent = isStamped ? "STAMPED" : "CHECK IN";
   document.getElementById("zone-sheet").classList.remove("hidden");
 }
 
@@ -586,9 +1081,6 @@ function updateScheduleUI() {
     btn.classList.toggle("active", Number(btn.dataset.day) === selectedDay);
   });
 
-  document.getElementById("sim-clock").textContent =
-    `${(demoStepIndex % daySessions.length) + 1} / ${daySessions.length}`;
-
   Object.keys(HALL_ZONES).forEach(zId => {
     const isHot = featured && featured.zoneId === zId;
     zoneBeacons[zId].visible = isHot;
@@ -597,8 +1089,7 @@ function updateScheduleUI() {
 
   if (featured) {
     const z = HALL_ZONES[featured.zoneId];
-    document.getElementById("live-countdown").textContent =
-      `${dayInfo.label.toUpperCase()} • ${featured.timeLabel.toUpperCase()}`;
+    document.getElementById("live-countdown").textContent = `${dayInfo.label} • ${featured.timeLabel}`;
     document.getElementById("live-title").textContent = featured.title;
     document.getElementById("live-zone-label").textContent = `${z.name} • ${z.wing}`;
 
@@ -616,13 +1107,13 @@ function updateScheduleUI() {
     return `
       <div class="sched-row ${isFeatured ? "is-live" : ""}">
         <div>
-          <div class="sched-time-pill">${ev.timeLabel} • ${ev.access.toUpperCase()}</div>
+          <div class="sched-time-pill">${ev.timeLabel} • ${ev.access}</div>
           <div class="sched-title-lg">${ev.title}</div>
           <div class="sched-sub-loc">${z.name} (${z.wing})</div>
         </div>
         <div class="sched-row-actions">
-          <button class="row-btn-primary" data-walk-zone="${ev.zoneId}" data-ev-id="${ev.id}">Walk Footsteps</button>
-          <button class="row-btn-secondary" data-detail-ev="${ev.id}">Event Details</button>
+          <button class="row-btn-primary" data-walk-zone="${ev.zoneId}" data-ev-id="${ev.id}">WALK FOOTSTEPS</button>
+          <button class="row-btn-secondary" data-detail-ev="${ev.id}">DETAILS</button>
         </div>
       </div>
     `;
@@ -660,10 +1151,7 @@ document.getElementById("btn-next-session").addEventListener("click", () => {
   selectedZoneId = null;
   updateScheduleUI();
   const featured = getCurrentFeaturedSession();
-  if (featured) {
-    updateRouteEverywhere(featured.zoneId);
-    if (viewMode === "3d") flyToZone3d(featured.zoneId);
-  }
+  if (featured) updateRouteEverywhere(featured.zoneId);
 });
 
 function renderZonesAndPassport() {
@@ -684,30 +1172,21 @@ function renderPassport() {
   const passportZones = Object.values(HALL_ZONES).filter(z => z.passport);
   const count = passportZones.filter(z => stampedZones.includes(z.id)).length;
   document.getElementById("stamp-count").textContent = count;
+  document.getElementById("passport-progress-label").textContent = `${count} / 4 COLLECTED`;
 
   const pGrid = document.getElementById("passport-grid");
   pGrid.innerHTML = passportZones.map(z => {
     const done = stampedZones.includes(z.id);
     return `
-      <button class="dir-card ${done ? "stamped" : ""}" data-zone="${z.id}">
-        <span class="cat-tag">${done ? "Collected" : "Unvisited"}</span>
-        <strong>${z.name}</strong>
+      <button class="pass-chip ${done ? "stamped" : ""}" data-zone="${z.id}">
+        ${z.name}
       </button>
     `;
   }).join("");
-  pGrid.querySelectorAll(".dir-card").forEach(btn => {
+  pGrid.querySelectorAll(".pass-chip").forEach(btn => {
     btn.addEventListener("click", () => openZoneInspector(btn.dataset.zone));
   });
 }
-
-document.querySelectorAll(".cat-pill").forEach(btn => {
-  btn.addEventListener("click", () => {
-    setSheetCollapsed(false);
-    document.querySelectorAll(".cat-pill, .sheet-view").forEach(el => el.classList.remove("active"));
-    btn.classList.add("active");
-    document.getElementById(`view-${btn.dataset.view}`).classList.add("active");
-  });
-});
 
 document.getElementById("btn-gate").addEventListener("click", () => {
   document.getElementById("gate-modal").classList.remove("hidden");
@@ -724,10 +1203,15 @@ document.querySelectorAll(".gate-option").forEach(btn => {
   });
 });
 
-// Initialize
+// Initialize Everything
 applyTheme(isDarkMode);
 renderZonesAndPassport();
 updateScheduleUI();
+renderFrameSelector();
+updateBoothPreview();
+renderCaptions();
+renderMemoryWall();
+
 const initialFeatured = getCurrentFeaturedSession();
 if (initialFeatured) updateRouteEverywhere(initialFeatured.zoneId);
 
